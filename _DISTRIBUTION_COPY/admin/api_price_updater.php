@@ -1,68 +1,56 @@
 <?php
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/user_auth.php';
-isAdmin(); // Security Check
+require_once __DIR__ . '/../includes/notifications.php';
 
-header('Content-Type: application/json');
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
-// Get Input
-$input = file_get_contents('php://input');
-$data = json_decode($input, true);
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
 
-if (!$data) {
-    echo json_encode(['error' => 'Invalid JSON']);
-    exit;
-}
-
-// Normalize Input: Can be {updates: [...]} or just [...]
-$items = $data['updates'] ?? $data;
-
-if (!is_array($items)) {
-    echo json_encode(['error' => 'Invalid Format. Expected array of objects.']);
-    exit;
-}
-
-$updatedCount = 0;
-$errors = [];
-
-try {
-    $pdo->beginTransaction();
-
-    foreach ($items as $item) {
-        if (!isset($item['id']))
-            continue;
-
-        $id = (int) $item['id'];
-        $fields = [];
-        $params = [];
-
-        // Dynamic Update Builder
-        if (isset($item['price'])) {
-            $fields[] = "price = ?";
-            $params[] = (float) $item['price'];
-        }
-        if (isset($item['price_wholesale'])) {
-            $fields[] = "price_wholesale = ?";
-            $params[] = (float) $item['price_wholesale'];
-        }
-        // Can add more fields later (e.g. stock)
-
-        if (!empty($fields)) {
-            $params[] = $id; // ID for WHERE clause
-            $sql = "UPDATE products SET " . implode(', ', $fields) . " WHERE id = ?";
-            $stmt = $pdo->prepare($sql);
-            if ($stmt->execute($params)) {
-                $updatedCount++;
-            }
-        }
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
-
-    $pdo->commit();
-    echo json_encode(['success' => true, 'updated' => $updatedCount, 'message' => "$updatedCount produtos atualizados com sucesso!"]);
-
-} catch (Exception $e) {
-    if ($pdo->inTransaction())
-        $pdo->rollBack();
-    echo json_encode(['error' => 'Database Error: ' . $e->getMessage()]);
 }
+
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
+
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
+?>
