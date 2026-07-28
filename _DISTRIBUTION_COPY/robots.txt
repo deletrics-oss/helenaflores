@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /includes/
+Disallow: /vendor/
+Disallow: *.json
+Disallow: *.sql
+
+Sitemap: https://fightarcade.com.br/catalogo/sitemap.php
