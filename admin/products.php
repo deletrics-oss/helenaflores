@@ -340,12 +340,18 @@ $categories = $pdo->query("SELECT * FROM categories ORDER BY name ASC")->fetchAl
                                 data-price-wholesale="<?php echo $p['price_wholesale']; ?>">
                                 <td><input type="checkbox" name="selected_ids[]" value="<?php echo $p['id']; ?>"></td>
                                 <td>
-                                    <?php if ($p['image_path']): ?>
-                                        <img src="../assets/uploads/<?php echo $p['image_path']; ?>"
-                                            style="width:50px; height:50px; object-fit:cover; border-radius:4px;">
-                                    <?php else: ?>
-                                        <div style="width:50px; height:50px; background:#333; border-radius:4px;"></div>
-                                    <?php endif; ?>
+                                    <?php 
+                                        $imgSrc = $p['image_path'] ?? '';
+                                        if ($imgSrc && strpos($imgSrc, 'http') !== 0) {
+                                            $imgSrc = '../assets/uploads/' . $imgSrc;
+                                        }
+                                        if (empty($imgSrc)) {
+                                            $imgSrc = 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=200&q=80';
+                                        }
+                                    ?>
+                                    <img src="<?php echo htmlspecialchars($imgSrc); ?>"
+                                         style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid #444;"
+                                         onerror="this.src='https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=200&q=80'">
                                 </td>
                                 <td>
                                     <?php echo htmlspecialchars($p['name']); ?>
