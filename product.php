@@ -23,7 +23,7 @@ if (!$product) {
 }
 
 $baseUrl = defined('BASE_URL') ? BASE_URL : '';
-$img = $product['image_path'] ? (strpos($product['image_path'], 'http') === 0 ? $product['image_path'] : $baseUrl . '/assets/uploads/' . $product['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=800&q=80';
+$img = get_product_image_url($product['image_path'], $product['name']);
 $oldPrice = $product['price'] * 1.20;
 $installment = $product['price'] / 3;
 
@@ -152,7 +152,7 @@ $related = $relStmt->fetchAll();
             <div class="gf-product-grid">
                 <?php foreach ($related as $p): ?>
                     <?php 
-                    $relImg = $p['image_path'] ? (strpos($p['image_path'], 'http') === 0 ? $p['image_path'] : $baseUrl . '/assets/uploads/' . $p['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=600&q=80';
+                    $relImg = get_product_image_url($p['image_path'], $p['name']);
                     ?>
                     <div class="gf-product-card">
                         <a href="product.php?id=<?php echo $p['id']; ?>" class="gf-product-img">
