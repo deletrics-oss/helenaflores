@@ -1,23 +1,56 @@
 <?php
-require_once 'config.php';
-require_once 'includes/db.php';
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
 
-echo "<h1>Atualizando Banco de Dados para Avaliações...</h1>";
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
-try {
-    // 1. Add 'approved' column to product_reviews if not exists
-    $check = $pdo->query("SHOW COLUMNS FROM product_reviews LIKE 'approved'");
-    if ($check->rowCount() == 0) {
-        $pdo->query("ALTER TABLE product_reviews ADD COLUMN approved TINYINT(1) DEFAULT 0");
-        echo "<p style='color:green;'>✅ Coluna 'approved' criada na tabela de avaliações.</p>";
-    } else {
-        echo "<p style='color:blue;'>ℹ️ Coluna 'approved' já existe.</p>";
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
+
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
+
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
-
-    echo "<p>Tudo pronto!</p>";
-    echo "<a href='admin/reviews.php'>Ir para Admin de Avaliações</a>";
-
-} catch (Exception $e) {
-    echo "<p style='color:red;'>Erro: " . $e->getMessage() . "</p>";
 }
+
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
+
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
 ?>
