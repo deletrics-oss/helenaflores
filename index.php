@@ -35,6 +35,39 @@ $products = $stmt->fetchAll();
 
 // Fetch Categories for Filter Bar
 $cats = $pdo->query("SELECT * FROM categories ORDER BY sort_order ASC, name ASC")->fetchAll();
+
+// BANNERS CAROUSEL LOGIC
+$banner_slides = [];
+try {
+    $banner_slides = $pdo->query("SELECT * FROM banners WHERE active = 1 ORDER BY display_order ASC, id DESC")->fetchAll();
+} catch (Exception $e) {}
+
+// Auto-scan assets/banners/ folder if DB is empty or has local files
+if (empty($banner_slides)) {
+    $localBannerFiles = glob(__DIR__ . '/assets/banners/*.{jpg,jpeg,png,webp}', GLOB_BRACE);
+    if (!empty($localBannerFiles)) {
+        foreach ($localBannerFiles as $idx => $file) {
+            $banner_slides[] = [
+                'image_path' => 'assets/banners/' . basename($file),
+                'title' => 'Helena Flores — Jardins',
+                'subtitle' => 'Buquês de Rosas Colombianas, Cestas Personalizadas e Arranjos de Luxo em SP',
+                'link_url' => '#produtos'
+            ];
+        }
+    }
+}
+
+// Fallback Banner Slide
+if (empty($banner_slides)) {
+    $banner_slides = [
+        [
+            'image_path' => 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=1600&q=80',
+            'title' => 'Helena Flores — Atelier nos Jardins',
+            'subtitle' => 'Há mais de 11 anos cultivando emoções em São Paulo.',
+            'link_url' => '#produtos'
+        ]
+    ];
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -45,36 +78,101 @@ $cats = $pdo->query("SELECT * FROM categories ORDER BY sort_order ASC, name ASC"
     <meta name="description" content="Há mais de 11 anos cultivando emoções. Buquês de Rosas Colombianas, Cestas Personalizadas e Arranjos de Luxo em SP. (11) 98672-7872">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>/assets/css/style.css?v=<?php echo time(); ?>">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>/assets/css/helena_theme.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>/assets/css/slider.css?v=<?php echo time(); ?>">
+    <style>
+        .hero-slider-helena {
+            position: relative;
+            width: 100%;
+            height: 420px;
+            overflow: hidden;
+            background: #1B3B2B;
+        }
+        .hero-slide {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-size: cover;
+            background-position: center;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .hero-slide.active { opacity: 1; z-index: 1; }
+        .hero-overlay-content {
+            background: rgba(27, 59, 43, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 2.5rem;
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.2);
+            text-align: center;
+            max-width: 800px;
+            margin: 0 15px;
+            color: #FFF;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        @media (max-width: 768px) {
+            .hero-slider-helena { height: 320px !important; }
+            .hero-overlay-content { padding: 1.2rem !important; }
+            .hero-overlay-content h1 { font-size: 1.6rem !important; }
+            .hero-overlay-content p { font-size: 0.9rem !important; }
+        }
+    </style>
 </head>
 <body>
 
     <?php include __DIR__ . '/includes/header_public.php'; ?>
 
-    <!-- Luxury Hero Section -->
-    <div style="background: linear-gradient(135deg, rgba(27,59,43,0.92) 0%, rgba(139,38,62,0.85) 100%), url('https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=1600&q=80') center/cover; padding: 4.5rem 1rem; color: white; text-align: center;">
-        <div class="container" style="max-width: 850px;">
-            <span style="color: #E8C3C8; text-transform: uppercase; letter-spacing: 2px; font-weight: 600; font-size: 0.85rem;">
-                Floricultura & Atelier de Presentes em São Paulo • Jardins
-            </span>
-            <h1 style="font-family: 'Playfair Display', Georgia, serif; font-size: 2.8rem; margin: 12px 0; color: #FFF;">
-                Helena Flores
-            </h1>
-            <p style="font-size: 1.15rem; color: #F9F5EC; font-weight: 300; margin-bottom: 1.8rem; line-height: 1.6;">
-                Há mais de 11 anos cultivando emoções. Buquês de Rosas Colombianas, Cestas Personalizadas e Arranjos de Luxo entregues com carinho.
-            </p>
-            <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
-                <a href="#produtos" class="btn" style="background:#C5A059; color:#FFF; border-radius:30px; padding:12px 30px; font-weight:600; text-decoration:none;">
-                    🌸 Ver Catálogo Completo
-                </a>
-                <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20encomendar%20um%20buqu%C3%AA%20personalizado" 
-                   target="_blank" 
-                   class="btn" 
-                   style="background:transparent; border:2px solid #FFF; color:#FFF; border-radius:30px; padding:12px 30px; font-weight:600; text-decoration:none;">
-                    💬 Fazer Pedido no WhatsApp
-                </a>
+    <!-- Large Banner Hero Carousel -->
+    <div class="hero-slider-helena">
+        <?php foreach ($banner_slides as $index => $slide):
+            $img = $slide['image_path'] ?? $slide['image'];
+            if (strpos($img, 'http') === false) {
+                $img = BASE_URL . '/' . ltrim($img, '/');
+            }
+            $ttl = $slide['title'] ?? 'Helena Flores';
+            $sub = $slide['subtitle'] ?? 'Atelier & Floricultura nos Jardins';
+            $lnk = $slide['link_url'] ?? '#produtos';
+            ?>
+            <div class="hero-slide <?php echo $index === 0 ? 'active' : ''; ?>"
+                 style="background-image: linear-gradient(135deg, rgba(0,0,0,0.4) 0%, rgba(27,59,43,0.5) 100%), url('<?php echo $img; ?>');">
+                <div class="hero-overlay-content">
+                    <span style="color: #E8C3C8; text-transform: uppercase; letter-spacing: 2px; font-weight: 600; font-size: 0.8rem;">
+                        Floricultura & Atelier de Presentes em São Paulo • Jardins
+                    </span>
+                    <h1 style="font-family: 'Playfair Display', Georgia, serif; font-size: 2.5rem; margin: 10px 0; color: #FFF;">
+                        <?php echo htmlspecialchars($ttl); ?>
+                    </h1>
+                    <p style="font-size: 1.1rem; color: #F9F5EC; font-weight: 300; margin-bottom: 1.5rem; line-height: 1.5;">
+                        <?php echo htmlspecialchars($sub); ?>
+                    </p>
+                    <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
+                        <a href="<?php echo $lnk; ?>" class="btn" style="background:#C5A059; color:#FFF; border-radius:30px; padding:10px 26px; font-weight:600; text-decoration:none;">
+                            🌸 Ver Produtos
+                        </a>
+                        <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20fazer%20um%20pedido" 
+                           target="_blank" 
+                           class="btn" 
+                           style="background:transparent; border:2px solid #FFF; color:#FFF; border-radius:30px; padding:10px 26px; font-weight:600; text-decoration:none;">
+                            💬 Pedir no WhatsApp
+                        </a>
+                    </div>
+                </div>
             </div>
-        </div>
+        <?php endforeach; ?>
     </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.hero-slide');
+        if (slides.length > 1) {
+            setInterval(() => {
+                slides[currentSlide].classList.remove('active');
+                currentSlide = (currentSlide + 1) % slides.length;
+                slides[currentSlide].classList.add('active');
+            }, 4500);
+        }
+    </script>
 
     <!-- Main Container -->
     <div class="container" id="produtos" style="margin-top: 2.5rem; margin-bottom: 4rem;">
@@ -147,7 +245,7 @@ $cats = $pdo->query("SELECT * FROM categories ORDER BY sort_order ASC, name ASC"
             <?php else: ?>
                 <div style="grid-column: 1 / -1; text-align:center; padding: 4rem; background:#FFF; border-radius:14px;">
                     <p style="font-size:1.2rem; color:#6B6B6B;">Nenhum produto encontrado nesta busca.</p>
-                    <a href="seed_helena_flores.php" class="btn" style="background:#8B263E; color:#FFF; border-radius:30px; margin-top:1rem; display:inline-block; text-decoration:none; padding:10px 24px;">
+                    <a href="seed_helena_flores.php" class="btn" style="background:#8B263E; color:#FFF; border-radius:30px; margin-top:1rem; display:inline-block; text-decoration:none; padding:12px 28px; font-weight:bold;">
                         🌹 Clique aqui para Inicializar o Catálogo Helena Flores
                     </a>
                 </div>
