@@ -1,6 +1,5 @@
 <?php
-// catalogo/config.php - Helena Flores Configuração Produção
-
+// config.php - Helena Flores Configuração Produção
 // -----------------------------------------------------
 // CONFIGURAÇÃO DO BANCO DE DADOS (Hostinger)
 // -----------------------------------------------------
@@ -10,9 +9,17 @@ define("DB_PASSWORD", 'H3l3n@Flores#2026!');
 define("DB_NAME", "u788439146_helena1");
 
 // -----------------------------------------------------
-// CONFIGURAÇÃO GERAL DE HELENA FLORES
+// DYNAMIC BASE_URL AUTO-DETECTION
 // -----------------------------------------------------
-define("BASE_URL", "/catalogo");
+if (!defined('BASE_URL')) {
+    $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+    if (substr($scriptDir, -6) === '/admin') {
+        $scriptDir = substr($scriptDir, 0, -6);
+    }
+    $baseUrl = rtrim($scriptDir, '/');
+    define("BASE_URL", $baseUrl);
+}
+
 define("SITE_NAME", "Helena Flores");
 define("WHATSAPP_ADMIN", "5511986727872");
 define("SITE_CNPJ", "18.274.066/0001-35");
