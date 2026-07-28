@@ -1,84 +1,56 @@
 <?php
 /**
- * Script para analisar a estrutura do template Shopee
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
  */
-$templatePath = __DIR__ . '/modeloplanilhasshopeemercadolivre/Shopee_mass_upload_2026-02-05_basic_template.xlsx';
 
-if (!file_exists($templatePath)) {
-    die("Template não encontrado: $templatePath");
-}
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
-$zip = new ZipArchive();
-if ($zip->open($templatePath) !== TRUE) {
-    die("Não foi possível abrir o arquivo XLSX");
-}
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
-echo "<h1>Análise do Template Shopee</h1>";
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
 
-// Lista todos os arquivos no XLSX
-echo "<h2>Arquivos no XLSX:</h2>";
-echo "<ul>";
-for ($i = 0; $i < $zip->numFiles; $i++) {
-    echo "<li>" . $zip->getNameIndex($i) . "</li>";
-}
-echo "</ul>";
-
-// Lê o sharedStrings (texto do Excel)
-$sharedStrings = [];
-$ssXml = $zip->getFromName('xl/sharedStrings.xml');
-if ($ssXml) {
-    $ssDoc = new DOMDocument();
-    $ssDoc->loadXML($ssXml);
-    $texts = $ssDoc->getElementsByTagNameNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 't');
-    foreach ($texts as $t) {
-        $sharedStrings[] = $t->textContent;
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
 }
 
-echo "<h2>Strings Compartilhadas (Headers do Template):</h2>";
-echo "<pre>";
-foreach (array_slice($sharedStrings, 0, 50) as $i => $str) {
-    echo "[$i] " . htmlspecialchars($str) . "\n";
-}
-echo "</pre>";
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
 
-// Lê a primeira sheet
-$sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
-if ($sheetXml) {
-    echo "<h2>Estrutura da Sheet1:</h2>";
-    $doc = new DOMDocument();
-    $doc->loadXML($sheetXml);
+$notif = new NotificationService($pdo);
 
-    $rows = $doc->getElementsByTagNameNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'row');
-    echo "<p>Total de linhas: " . $rows->length . "</p>";
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
 
-    echo "<h3>Primeiras 10 linhas:</h3>";
-    echo "<table border='1'>";
-    $count = 0;
-    foreach ($rows as $row) {
-        if ($count >= 10)
-            break;
-        echo "<tr>";
-        $cells = $row->getElementsByTagNameNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'c');
-        foreach ($cells as $cell) {
-            $v = $cell->getElementsByTagNameNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'v');
-            $value = $v->length > 0 ? $v->item(0)->textContent : '';
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
 
-            // Se for string compartilhada (t="s"), busca o índice
-            if ($cell->getAttribute('t') === 's' && isset($sharedStrings[(int) $value])) {
-                $value = $sharedStrings[(int) $value];
-            }
-
-            echo "<td>" . htmlspecialchars(substr($value, 0, 50)) . "</td>";
-        }
-        echo "</tr>";
-        $count++;
-    }
-    echo "</table>";
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
 }
 
-$zip->close();
-
-echo "<h2>Conclusão</h2>";
-echo "<p>Use essas informações para ajustar o exportador.</p>";
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
 ?>
