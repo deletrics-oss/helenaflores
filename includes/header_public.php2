@@ -1,0 +1,22 @@
+<?php
+// Simple header helper
+$is_logged = isset($_SESSION['user_id']);
+?>
+<header>
+    <div class="container nav-wrapper">
+        <div class="logo">
+            <a href="<?php echo BASE_URL; ?>/">Fight<span>Arcade</span></a>
+        </div>
+        <nav class="nav-links">
+            <a href="<?php echo BASE_URL; ?>/">Catálogo</a>
+            <?php if ($is_logged): ?>
+                <a href="<?php echo BASE_URL; ?>/my-orders.php">Meus Pedidos</a>
+                <a href="<?php echo BASE_URL; ?>/cart.php">Carrinho</a>
+                <a href="<?php echo BASE_URL; ?>/logout.php" class="btn-sm btn-danger">Sair</a>
+            <?php else: ?>
+                <a href="<?php echo BASE_URL; ?>/login.php">Entrar</a>
+                <a href="<?php echo BASE_URL; ?>/register.php" class="btn-sm btn-primary" style="color:#000">Cadastrar</a>
+            <?php endif; ?>
+        </nav>
+    </div>
+</header>
