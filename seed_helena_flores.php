@@ -1,6 +1,7 @@
 <?php
 /**
  * seed_helena_flores.php — Semeador Completo dos 118 Produtos do WhatsApp Business Helena Flores
+ * Mapeia automaticamente fotos locais baixadas da pasta assets/uploads/
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/db.php';
@@ -26,20 +27,51 @@ function detectCatName($title) {
     return 'Rosas Colombianas';
 }
 
-function getLocalImageFile($title) {
-    if (preg_match('/girassol|girassois|girasol/i', $title)) return 'girassol.jpg';
-    if (preg_match('/cesta|café|cafe/i', $title)) return 'cesta_cafe.jpg';
-    if (preg_match('/orquídea|orquidea/i', $title)) return 'orquidea.jpg';
-    if (preg_match('/tulipa|tulipas/i', $title)) return 'tulipa.jpg';
-    if (preg_match('/ferreiro|chocolates|bombom|kit|urso|pelúcia|nutella|chandon|vinho|espumante/i', $title)) return 'kit_ferrero.jpg';
-    if (preg_match('/amarelas|amarelo/i', $title)) return 'rose_yellow.jpg';
-    if (preg_match('/pink|rosé|rosa/i', $title)) return 'rose_pink.jpg';
-    if (preg_match('/arranjo|vaso|lírio|lirio/i', $title)) return 'arranjo_vaso.jpg';
-    return 'rose_red.jpg';
+// Scans local assets/uploads/ for available original photos
+$uploadDir = __DIR__ . '/assets/uploads/';
+$localFiles = [];
+if (file_exists($uploadDir)) {
+    $files = scandir($uploadDir);
+    foreach ($files as $f) {
+        if ($f !== '.' && $f !== '..' && is_file($uploadDir . $f) && preg_match('/\.(jpg|jpeg|png|webp)$/i', $f)) {
+            if ($f !== 'defects') {
+                $localFiles[] = $f;
+            }
+        }
+    }
+}
+
+function getBestLocalImage($title, $index, $localFiles) {
+    if (empty($localFiles)) return 'rose_red.jpg';
+
+    // 1. Try finding a filename that matches product slug or title
+    $slug = makeSlug($title);
+    foreach ($localFiles as $lf) {
+        if (stripos($lf, $slug) !== false || stripos($lf, str_replace('-', '_', $slug)) !== false) {
+            return $lf;
+        }
+    }
+
+    // 2. Try finding by keyword
+    if (preg_match('/girassol/i', $title)) {
+        foreach ($localFiles as $lf) { if (stripos($lf, 'girassol') !== false) return $lf; }
+    }
+    if (preg_match('/cesta/i', $title)) {
+        foreach ($localFiles as $lf) { if (stripos($lf, 'cesta') !== false) return $lf; }
+    }
+    if (preg_match('/orquidea|orquídea/i', $title)) {
+        foreach ($localFiles as $lf) { if (stripos($lf, 'orquidea') !== false) return $lf; }
+    }
+    if (preg_match('/tulipa/i', $title)) {
+        foreach ($localFiles as $lf) { if (stripos($lf, 'tulipa') !== false) return $lf; }
+    }
+
+    // 3. Fallback to rotating available local files in assets/uploads/
+    return $localFiles[$index % count($localFiles)];
 }
 
 try {
-    // 1. Ensure Table Structure & Categories
+    // 1. Categories
     $categories = [
         ['name' => 'Rosas Colombianas', 'slug' => 'rosas-colombianas', 'sort_order' => 1],
         ['name' => 'Cestas Personalizadas', 'slug' => 'cestas-personalizadas', 'sort_order' => 2],
@@ -63,7 +95,7 @@ try {
         }
     }
 
-    // 2. Todos os 118 Produtos do Catálogo WhatsApp Business
+    // 2. Raw 118 Products List
     $raw118Products = [
         ["title" => "Buque com 12 Colombianas", "price" => 300.00, "description" => "Buquê de 12 Rosas Colombianas selecionadas com fita de cetim."],
         ["title" => "Buquê com rosas colombianas", "price" => 320.00, "description" => "12 Rosas colombianas Folhagem verde e gypsofila Embalagem kraft e laço branco"],
@@ -188,14 +220,14 @@ try {
     $inserted = 0;
     $updated = 0;
 
-    foreach ($raw118Products as $p) {
+    foreach ($raw118Products as $idx => $p) {
         $name = trim($p['title']);
         $price = floatval($p['price']);
         $desc = trim($p['description']);
         $catName = detectCatName($name);
         $catId = $catMap[$catName] ?? 1;
         $slug = makeSlug($name);
-        $imgFile = getLocalImageFile($name);
+        $imgFile = getBestLocalImage($name, $idx, $localFiles);
 
         $stmt = $pdo->prepare("SELECT id FROM products WHERE name = ? OR slug = ?");
         $stmt->execute([$name, $slug]);
@@ -216,9 +248,10 @@ try {
     echo "
     <div style='font-family: Arial, sans-serif; max-width: 700px; margin: 50px auto; padding: 35px; background: #FFF5F7; border: 2px solid #D81B60; border-radius: 16px; text-align: center;'>
         <h1 style='color: #C2185B;'>🌸 100% dos 118 Produtos do WhatsApp Cadastrados!</h1>
-        <p style='font-size: 1.15rem; color: #333; line-height:1.6;'>Todos os 118 buquês, cestas de café da manhã, chocolates Ferrero Rocher, orquídeas cascatas, kits de namorados e arranjos do seu WhatsApp foram cadastrados com arquivos de fotos em HD salvos em <code>assets/uploads/</code>!</p>
+        <p style='font-size: 1.15rem; color: #333; line-height:1.6;'>Todos os 118 buquês, cestas de café da manhã, chocolates Ferrero Rocher, orquídeas cascatas, kits de namorados e arranjos do seu WhatsApp foram cadastrados e vinculados com fotos da pasta <code>assets/uploads/</code>!</p>
         <hr style='border: 0; border-top: 1px solid #E0D0D5; margin: 20px 0;'>
         <div style='text-align: left; background: #FFF; padding: 18px; border-radius: 10px; font-size: 1rem; color:#444;'>
+            • Arquivos Locais Detectados em assets/uploads: <strong>" . count($localFiles) . "</strong><br>
             • Total de Produtos Processados: <strong>" . count($raw118Products) . "</strong><br>
             • Novos produtos inseridos: <strong>{$inserted}</strong><br>
             • Produtos atualizados: <strong>{$updated}</strong>
