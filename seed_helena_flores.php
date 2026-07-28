@@ -195,33 +195,33 @@ try {
 
         if (!$existingId) {
             $sku = 'HF-WA-' . strtoupper(substr(md5($name), 0, 6));
-            $ins = $pdo->prepare("INSERT INTO products (category_id, name, slug, description, sku, price, image_path, active, stock_qty, featured, show_on_site) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 50, 1, 1)");
+            $ins = $pdo->prepare("INSERT INTO products (category_id, name, slug, description, sku, price, image_path, active, stock_qty, featured) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 50, 1)");
             $ins->execute([$catId, $name, $slug, $desc, $sku, $price, $imgFile]);
             $inserted++;
         } else {
-            $upd = $pdo->prepare("UPDATE products SET price = IF(? > 0, ?, price), description = IF(LENGTH(?) > 3, ?, description), image_path = ?, active = 1, show_on_site = 1 WHERE id = ?");
+            $upd = $pdo->prepare("UPDATE products SET price = IF(? > 0, ?, price), description = IF(LENGTH(?) > 3, ?, description), image_path = ?, active = 1 WHERE id = ?");
             $upd->execute([$price, $price, $desc, $desc, $imgFile, $existingId]);
             $updated++;
         }
     }
 
     echo "
-    <div style='font-family: Arial, sans-serif; max-width: 700px; margin: 50px auto; padding: 35px; background: #FFF5F7; border: 2px solid #D81B60; border-radius: 16px; text-align: center;'>
-        <h1 style='color: #C2185B;'>🌸 100% dos 118 Produtos Vinculados com Sucesso!</h1>
-        <p style='font-size: 1.15rem; color: #333; line-height:1.6;'>Todos os 118 buquês, cestas de café da manhã, chocolates e kits do WhatsApp foram cadastrados com as imagens numeradas de <code>001-...jpg</code> até <code>118-...jpg</code>!</p>
+    <div style='font-family: Arial, sans-serif; max-width: 700px; margin: 30px auto; padding: 25px; background: #FFF5F7; border: 2px solid #4CAF50; border-radius: 16px; text-align: center;'>
+        <h1 style='color: #2E7D32;'>🌸 100% dos 118 Produtos Sincronizados com Sucesso!</h1>
+        <p style='font-size: 1.1rem; color: #333; line-height:1.6;'>Todos os 118 buquês, cestas de café da manhã, chocolates e kits do WhatsApp foram cadastrados no MySQL com os nomes das imagens de <code>001-...jpg</code> até <code>118-...jpg</code>!</p>
         <hr style='border: 0; border-top: 1px solid #E0D0D5; margin: 20px 0;'>
         <div style='text-align: left; background: #FFF; padding: 18px; border-radius: 10px; font-size: 1rem; color:#444;'>
             • Total de Produtos com Mapeamento Exato: <strong>" . count($raw118Products) . "</strong><br>
-            • Novos produtos inseridos: <strong>{$inserted}</strong><br>
-            • Produtos atualizados: <strong>{$updated}</strong>
+            • Novos produtos inseridos no MySQL: <strong>{$inserted}</strong><br>
+            • Produtos atualizados no MySQL: <strong>{$updated}</strong>
         </div>
         <br>
-        <a href='index.php' style='display: inline-block; background: #D81B60; color: #FFF; padding: 15px 36px; border-radius: 30px; text-decoration: none; font-weight: bold; font-size:1.15rem;'>
-            🌸 Ver Catálogo no Site →
+        <a href='../index.php' target='_blank' style='display: inline-block; background: #C2185B; color: #FFF; padding: 14px 32px; border-radius: 30px; text-decoration: none; font-weight: bold; font-size:1.1rem;'>
+            🌸 Ver Catálogo na Loja Pública →
         </a>
     </div>
     ";
 
 } catch (Exception $e) {
-    echo "<h3 style='color:red;'>Erro ao semear: " . htmlspecialchars($e->getMessage()) . "</h3>";
+    echo "<div style='background:#FFEBEE; color:#C2185B; padding:20px; border-radius:12px; margin:20px 0;'><h3>Erro ao semear: " . htmlspecialchars($e->getMessage()) . "</h3></div>";
 }
