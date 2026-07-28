@@ -34,34 +34,77 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $products = $stmt->fetchAll();
 
-// BANNERS CAROUSEL LOGIC
+// ------------------------------------------------------------------
+// BANNERS CAROUSEL LOGIC — 10 TO 15 ITEMS + 3 DAILY AUTO-PRODUCT BANNERS
+// ------------------------------------------------------------------
 $banner_slides = [];
+
+// 1. Fetch DB Banners
 try {
     $banner_slides = $pdo->query("SELECT * FROM banners WHERE active = 1 ORDER BY display_order ASC, id DESC")->fetchAll();
 } catch (Exception $e) {}
 
-if (empty($banner_slides)) {
-    $banner_slides = [
-        [
-            'image_path' => 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=1600&q=80',
-            'title' => 'Rosas Colombianas Selecionadas',
-            'subtitle' => 'Há mais de 11 anos cultivando emoções e carinho nos Jardins em São Paulo.',
-            'link_url' => '#produtos'
-        ],
-        [
-            'image_path' => 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=1600&q=80',
-            'title' => 'Cestas de Café & Presentes de Luxo',
-            'subtitle' => 'Entregas expressas no mesmo dia para surpreender quem você ama.',
-            'link_url' => '#produtos'
-        ],
-        [
-            'image_path' => 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=1600&q=80',
-            'title' => 'Arranjos e Buquês Exclusivos',
-            'subtitle' => 'Flores frescas colhidas diariamente com garantia de durabilidade.',
-            'link_url' => '#produtos'
-        ]
-    ];
+// 2. Curated Base Helena Flores Banners if DB is small
+$default_banners = [
+    [
+        'image_path' => 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=1600&q=80',
+        'title' => 'Rosas Colombianas Selecionadas',
+        'subtitle' => 'Há mais de 11 anos cultivando emoções e carinho nos Jardins em SP.',
+        'link_url' => '#produtos'
+    ],
+    [
+        'image_path' => 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=1600&q=80',
+        'title' => 'Cestas de Café & Presentes de Luxo',
+        'subtitle' => 'Entregas expressas no mesmo dia para surpreender quem você ama.',
+        'link_url' => '#produtos'
+    ],
+    [
+        'image_path' => 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=1600&q=80',
+        'title' => 'Arranjos e Buquês Exclusivos',
+        'subtitle' => 'Flores frescas colhidas diariamente com garantia de durabilidade.',
+        'link_url' => '#produtos'
+    ],
+    [
+        'image_path' => 'https://images.unsplash.com/photo-1591886960571-74d43a9d4166?w=1600&q=80',
+        'title' => 'Coleção de Girassóis Vibrantes',
+        'subtitle' => 'Ilumine o dia de alguém especial com os melhores girassóis de SP.',
+        'link_url' => '?q=girassol'
+    ],
+    [
+        'image_path' => 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&q=80',
+        'title' => 'Fabulosas Rosas Encantadas na Cúpula',
+        'subtitle' => 'Rosas eternas preservadas que duram até 5 anos.',
+        'link_url' => '?q=encantada'
+    ]
+];
+
+if (count($banner_slides) < 5) {
+    $banner_slides = array_merge($banner_slides, $default_banners);
 }
+
+// 3. Auto-Generate Banners from Products (3 Rotating Daily Products)
+$dayOfYear = date('z'); // Day 0..365
+$totalProds = count($products);
+
+if ($totalProds > 0) {
+    // Pick 3 rotating products per day
+    for ($i = 0; $i < 5; $i++) {
+        $prodIndex = ($dayOfYear + $i * 2) % $totalProds;
+        $dailyProd = $products[$prodIndex];
+        
+        $pImg = $dailyProd['image_path'] ? (strpos($dailyProd['image_path'], 'http') === 0 ? $dailyProd['image_path'] : $baseUrl . '/assets/uploads/' . $dailyProd['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=1600&q=80';
+        
+        $banner_slides[] = [
+            'image_path' => $pImg,
+            'title' => '🌟 Destaque do Dia: ' . $dailyProd['name'],
+            'subtitle' => 'Por apenas R$ ' . number_format($dailyProd['price'], 2, ',', '.') . ' em 3x sem juros com entrega rápida nos Jardins!',
+            'link_url' => 'product.php?id=' . $dailyProd['id']
+        ];
+    }
+}
+
+// Limit to 12 - 15 total items for optimal slider performance
+$banner_slides = array_slice($banner_slides, 0, 12);
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -110,7 +153,7 @@ if (empty($banner_slides)) {
 
     <?php include __DIR__ . '/includes/header_public.php'; ?>
 
-    <!-- Large Giuliana Style Hero Slider -->
+    <!-- Large Giuliana Style Hero Slider (10 to 15 Items Carousel) -->
     <div class="gf-hero-slider">
         <?php foreach ($banner_slides as $index => $slide):
             $img = $slide['image_path'] ?? $slide['image'];
@@ -122,14 +165,14 @@ if (empty($banner_slides)) {
             $lnk = $slide['link_url'] ?? '#produtos';
             ?>
             <div class="gf-slide <?php echo $index === 0 ? 'active' : ''; ?>"
-                 style="background-image: linear-gradient(90deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.3) 100%), url('<?php echo $img; ?>');">
+                 style="background-image: linear-gradient(90deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.3) 100%), url('<?php echo $img; ?>');">
                 <div class="gf-slide-card">
                     <span class="gf-slide-tag">🌹 Entregas no Mesmo Dia em Jardins & SP</span>
                     <h2><?php echo htmlspecialchars($ttl); ?></h2>
                     <p><?php echo htmlspecialchars($sub); ?></p>
                     <div style="display:flex; gap:10px; flex-wrap:wrap;">
                         <a href="<?php echo $lnk; ?>" class="gf-btn-primary">
-                            🌸 Ver Ofertas de Hoje
+                            🌸 Ver Oferta
                         </a>
                         <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20fazer%20um%20pedido%20pelo%20WhatsApp" 
                            target="_blank" 
@@ -140,17 +183,27 @@ if (empty($banner_slides)) {
                 </div>
             </div>
         <?php endforeach; ?>
+
+        <!-- Carousel Navigation Controls -->
+        <button onclick="prevSlide()" style="position:absolute; left:15px; top:50%; transform:translateY(-50%); z-index:10; background:rgba(255,255,255,0.8); border:none; width:40px; height:40px; border-radius:50%; font-size:1.2rem; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.15);">❮</button>
+        <button onclick="nextSlide()" style="position:absolute; right:15px; top:50%; transform:translateY(-50%); z-index:10; background:rgba(255,255,255,0.8); border:none; width:40px; height:40px; border-radius:50%; font-size:1.2rem; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.15);">❯</button>
     </div>
 
     <script>
         let currentSlide = 0;
         const slides = document.querySelectorAll('.gf-slide');
+        
+        function showSlide(index) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (index + slides.length) % slides.length;
+            slides[currentSlide].classList.add('active');
+        }
+
+        function nextSlide() { showSlide(currentSlide + 1); }
+        function prevSlide() { showSlide(currentSlide - 1); }
+
         if (slides.length > 1) {
-            setInterval(() => {
-                slides[currentSlide].classList.remove('active');
-                currentSlide = (currentSlide + 1) % slides.length;
-                slides[currentSlide].classList.add('active');
-            }, 4000);
+            setInterval(nextSlide, 3500);
         }
     </script>
 
