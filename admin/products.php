@@ -71,6 +71,21 @@ if (!empty($_POST['selected_ids'])) {
         header("Location: products.php?msg=bulk_updated");
         exit;
     }
+    if (isset($_POST['bulk_gemini_ai'])) {
+        require_once __DIR__ . '/../includes/ai_gemini.php';
+        $gemini = new GeminiFloralAI();
+
+        $stmt = $pdo->query("SELECT p.id, p.name, p.description, c.name as cat_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id IN ($ids)");
+        $prodsToEnrich = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($prodsToEnrich as $p) {
+            $richDesc = $gemini->generateFloralDescription($p['name'], $p['description'], $p['cat_name'] ?? '');
+            $upd = $pdo->prepare("UPDATE products SET description = ? WHERE id = ?");
+            $upd->execute([$richDesc, $p['id']]);
+        }
+        header("Location: products.php?msg=gemini_enriched");
+        exit;
+    }
 }
 
 // 3. CLONE PRODUCT
@@ -304,6 +319,8 @@ $categories = $pdo->query("SELECT * FROM categories ORDER BY name ASC")->fetchAl
 
                     <div style="border-left:1px solid #444; height:25px; margin:0 10px;"></div>
 
+                    <button type="submit" name="bulk_gemini_ai" class="btn-sm" style="background:linear-gradient(135deg, #8E44AD, #C2185B); color:white; font-weight:bold; box-shadow: 0 2px 8px rgba(194,24,91,0.4);"
+                        title="Enriquecer todas as descrições dos produtos selecionados com Gemini AI">🤖 Gemini IA: Melhorar Descrições</button>
                     <button type="button" class="btn-sm" onclick="openAIModal('price')"
                         style="background:#8e44ad; color:white;">💰 IA: Preços</button>
                     <button type="button" class="btn-sm" onclick="openWholesaleModal()"
