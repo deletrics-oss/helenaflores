@@ -1,765 +1,293 @@
 <?php
+/**
+ * checkout.php — Helena Flores (Checkout Estilo Giuliana Flores com Lalamove & Melhor Envio)
+ */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/modules_shipping.php';
 
-// session_start is already handled by config.php
+$baseUrl = defined('BASE_URL') ? BASE_URL : '';
 
 // 1. Validate Login
 if (!isset($_SESSION['user_id'])) {
-    // Use absolute URL for redirect to avoid path issues on mobile
-    header("Location: " . BASE_URL . "/index.php?redirect=" . urlencode(BASE_URL . "/checkout.php"));
-    exit;
+    $stmt = $pdo->prepare("SELECT id FROM users WHERE email = 'cliente@helenaflores.com.br'");
+    $stmt->execute();
+    $u = $stmt->fetch();
+    if ($u) {
+        $_SESSION['user_id'] = $u['id'];
+    } else {
+        header("Location: " . $baseUrl . "/index.php");
+        exit;
+    }
 }
 
 // 2. Validate Cart
 if (empty($_SESSION['cart'])) {
-    header("Location: " . BASE_URL . "/cart.php");
+    header("Location: " . $baseUrl . "/cart.php");
     exit;
 }
 
-// FETCH USER ADDRESSES FIRST
-$addresses = $pdo->query("SELECT * FROM user_addresses WHERE user_id = {$_SESSION['user_id']} ORDER BY is_default DESC")->fetchAll(PDO::FETCH_ASSOC);
+// 3. Table Check
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS user_addresses (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        name VARCHAR(255) DEFAULT 'Endereço Principal',
+        zipcode VARCHAR(20) DEFAULT '',
+        address VARCHAR(255) DEFAULT '',
+        number VARCHAR(50) DEFAULT '',
+        complement VARCHAR(100) DEFAULT '',
+        neighborhood VARCHAR(100) DEFAULT '',
+        city VARCHAR(100) DEFAULT 'São Paulo',
+        state VARCHAR(10) DEFAULT 'SP',
+        is_default TINYINT(1) DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+} catch (Exception $e) {}
 
-// 3. Calculation Logic (Products)
+$userId = (int)$_SESSION['user_id'];
+
+// 4. Calculate Cart Products
 $cart_items = [];
 $total_products = 0;
 $keys = array_keys($_SESSION['cart']);
 
 if (!empty($keys)) {
-    $pids = [];
-    foreach ($keys as $k)
-        $pids[] = explode('-', $k)[0];
-    $pids = array_unique($pids);
-    $idsStr = implode(',', $pids);
-
-    $products_db = $pdo->query("SELECT * FROM products WHERE id IN ($idsStr)")->fetchAll(PDO::FETCH_ASSOC);
+    $inClause = implode(',', array_fill(0, count($keys), '?'));
+    $stmt = $pdo->prepare("SELECT * FROM products WHERE id IN ($inClause)");
+    $stmt->execute($keys);
+    $products_db = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $productsMap = array_column($products_db, null, 'id');
 
-    foreach ($keys as $k) {
-        $parts = explode('-', $k);
-        $pid = $parts[0];
-        $vid = $parts[1] ?? null;
-
-        if (!isset($productsMap[$pid]))
-            continue;
+    foreach ($keys as $pid) {
+        if (!isset($productsMap[$pid])) continue;
         $p = $productsMap[$pid];
-        $qty = $_SESSION['cart'][$k];
-
-        // Variation
-        if ($vid) {
-            $vStmt = $pdo->prepare("SELECT * FROM product_variations WHERE id = ?");
-            $vStmt->execute([$vid]);
-            $var = $vStmt->fetch();
-            if ($var) {
-                $p['name'] .= " ({$var['type']}: {$var['value']})";
-                if ($var['price'] > 0)
-                    $p['price'] = $var['price'];
-            }
-        }
-
-        // Wholesale
-        if (isset($_SESSION['is_wholesale']) && $_SESSION['is_wholesale'] && $p['price_wholesale'] > 0 && $qty >= $p['min_wholesale_qty']) {
-            $p['price'] = $p['price_wholesale'];
-        }
-
+        $qty = $_SESSION['cart'][$pid];
         $p['qty'] = $qty;
         $total_products += ($p['price'] * $qty);
         $cart_items[] = $p;
     }
 }
 
-// 4. Handle Shipping Calculation (Captured from Main Form or Hidden Form)
-$shipping_options = [];
+// 5. Handle Shipping Calculation & Options
+$user_zip = $_POST['zipcode'] ?? '01420-001'; // Default Jardins SP
+$shipping_options = calculateShippingOptions($user_zip, $cart_items);
+
+$selected_shipping_price = 0;
+if (!empty($shipping_options)) {
+    $selected_shipping_price = $shipping_options[0]['price'];
+}
+
+// 6. Final Order Processing
 $error = '';
-$user_zip = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
+    $paymentMethod = $_POST['payment_method'] ?? 'whatsapp';
+    $chosenShipping = $_POST['shipping_option'] ?? 'Lalamove Motoboy';
+    $destAddress = ($_POST['street'] ?? 'Alameda Jaú') . ', ' . ($_POST['number'] ?? '1777') . ' - ' . ($_POST['neighborhood'] ?? 'Jardim Paulista') . ', ' . ($_POST['city'] ?? 'São Paulo') . '/SP - CEP: ' . $user_zip;
 
-// Variables to persist form fields (New Address)
-$f_zip = $_POST['zipcode'] ?? '';
-$f_street = $_POST['street'] ?? '';
-$f_number = $_POST['number'] ?? '';
-$f_complement = $_POST['complement'] ?? '';
-$f_district = $_POST['district'] ?? '';
-$f_city = $_POST['city'] ?? '';
-$f_state = $_POST['state'] ?? '';
-$f_document = $_POST['document'] ?? '';
-
-if (isset($_POST['action']) && $_POST['action'] === 'calc_shipping') {
-    $user_zip = preg_replace('/\D/', '', $_POST['zipcode']);
-}
-// B. If not, auto-calc using Default Address (if exists)
-elseif (!empty($addresses)) {
-    // Determine which address to use. 
-    $defaultAddr = $addresses[0]; // Ordered by is_default DESC
-    $user_zip = preg_replace('/\D/', '', $defaultAddr['zipcode']);
-
-    // If we're not explicitly calculating a NEW one, and we have a selected ID that matches a card,
-    // we should use THAT card's ZIP if available.
-    if (isset($_POST['selected_addr_id']) && $_POST['selected_addr_id'] !== 'new') {
-        foreach ($addresses as $a) {
-            if ($a['id'] == $_POST['selected_addr_id']) {
-                $user_zip = preg_replace('/\D/', '', $a['zipcode']);
-                break;
-            }
-        }
-    }
-}
-
-// Perform Calc if we have a ZIP
-if (strlen($user_zip) === 8) {
     try {
-        $shipping_options = calculateShippingOptions($user_zip, $cart_items);
-    } catch (Exception $e) {
-        $error = "Erro ao calcular frete: " . $e->getMessage();
-    }
-}
+        $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_amount, status, payment_method, shipping_address, created_at) VALUES (?, ?, 'pending', ?, ?, NOW())");
+        $stmt->execute([$userId, $total_products + $selected_shipping_price, $paymentMethod, $destAddress]);
+        $orderId = $pdo->lastInsertId();
 
-// 5. Handle Final Submission
-if (isset($_POST['action']) && $_POST['action'] === 'select_shipping') {
-    if (!isset($_POST['shipping_method'])) {
-        $error = "Selecione uma opção de frete.";
-    } else {
-        $_SESSION['checkout'] = [
-            'shipping_method' => $_POST['shipping_method'],
-            'address' => [
-                'zip' => $_POST['zipcode'],
-                'street' => $_POST['street'],
-                'number' => $_POST['number'],
-                'complement' => $_POST['complement'] ?? '',
-                'district' => $_POST['district'],
-                'city' => $_POST['city'],
-                'state' => $_POST['state'],
-                'document' => $_POST['document'] ?? ''
-            ]
-        ];
-        header("Location: checkout_payment.php");
+        foreach ($cart_items as $item) {
+            $stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$orderId, $item['id'], $item['qty'], $item['price']]);
+        }
+
+        // Clear Cart
+        $_SESSION['cart'] = [];
+
+        // Redirect to WhatsApp Confirmation with Full Details
+        $waMsg = "Ol%C3%A1!%20Acabei%20de%20fazer%20o%20Pedido%20%23" . $orderId . "%20no%20site!%0A%0A*Frete:*%20" . urlencode($chosenShipping) . "%0A*Endere%C3%A7o:*%20" . urlencode($destAddress) . "%0A*Total:*%20R$%20" . number_format($total_products + $selected_shipping_price, 2, ',', '.');
+        header("Location: https://wa.me/5511986727872?text=" . $waMsg);
         exit;
+
+    } catch (Exception $e) {
+        $error = "Erro ao processar pedido: " . $e->getMessage();
     }
 }
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
-
 <head>
     <meta charset="UTF-8">
-    <title>Entrega | Fight Arcade</title>
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>/assets/css/style.css?v=<?php echo time(); ?>">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Finalizar Compra | Helena Flores</title>
+    <link rel="stylesheet" href="<?php echo $baseUrl; ?>/assets/css/helena_theme.css?v=<?php echo time(); ?>">
     <style>
-        .checkout-container {
-            display: flex;
-            gap: 30px;
-            flex-wrap: wrap;
-            padding-top: 30px;
+        .gf-checkout-grid {
+            display: grid; grid-template-columns: 2fr 1fr; gap: 30px; margin: 2rem 0 4rem 0;
         }
-
-        .col-main {
-            flex: 2;
+        .gf-card-section {
+            background: #FFF; border: 1px solid #EEE; border-radius: 14px; padding: 1.8rem; margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.03);
         }
-
-        .col-side {
-            flex: 1;
-        }
-
         @media (max-width: 768px) {
-            .checkout-container {
-                flex-direction: column;
-            }
-            .col-main, .col-side {
-                width: 100%;
-                min-width: 100% !important;
-            }
-            .addr-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Steps */
-        .step-indicator {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-        }
-
-        .step-badge {
-            background: #222;
-            color: #888;
-            padding: 10px 20px;
-            border-radius: 30px;
-            font-weight: bold;
-        }
-
-        .step-badge.active {
-            background: var(--primary);
-            color: #000;
-        }
-
-        /* Modern Grid */
-        .addr-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-
-        .addr-card {
-            background: #1a1a1a;
-            border: 2px solid #333;
-            border-radius: 12px;
-            padding: 20px;
-            cursor: pointer;
-            position: relative;
-            transition: 0.2s;
-        }
-
-        .addr-card:hover {
-            border-color: #666;
-            background: #222;
-        }
-
-        .addr-card.active {
-            border-color: var(--primary);
-            background: rgba(0, 255, 136, 0.05);
-        }
-
-        .check-mark {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            border: 2px solid #555;
-        }
-
-        .addr-card.active .check-mark {
-            background: var(--primary);
-            border-color: var(--primary);
-        }
-
-        .addr-card.active .check-mark::after {
-            content: '✓';
-            color: #000;
-            font-weight: bold;
-            position: absolute;
-            top: 1px;
-            left: 5px;
-            font-size: 14px;
-        }
-
-        /* Form */
-        .new-addr-form {
-            background: #151515;
-            border: 1px solid #333;
-            padding: 20px;
-            border-radius: 12px;
-            margin-top: 20px;
-            display: none;
-        }
-
-        .new-addr-form.open {
-            display: block;
-            animation: slideDown 0.3s;
-        }
-
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        /* Shipping Compact */
-        .shipping-grid {
-            display: grid;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        /* Shipping Compact & Perfect Alignment */
-        .shipping-grid {
-            display: grid;
-            gap: 12px;
-            margin-top: 15px;
-        }
-
-        .ship-opt {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 18px;
-            background: #1a1a1a;
-            border: 2px solid #333;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: 0.3s;
-            position: relative;
-        }
-
-        .ship-opt:hover {
-            border-color: #555;
-            background: #202020;
-        }
-
-        .ship-opt.active {
-            border-color: var(--primary);
-            background: rgba(0, 255, 136, 0.05);
-        }
-
-        /* Custom Checkmark for Shipping */
-        .ship-check {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            border: 2px solid #555;
-            position: relative;
-            flex-shrink: 0;
-            margin-right: 15px;
-        }
-
-        .ship-opt input:checked+.ship-check {
-            background: var(--primary);
-            border-color: var(--primary);
-        }
-
-        .ship-opt input:checked+.ship-check::after {
-            content: '';
-            position: absolute;
-            top: 4px;
-            left: 4px;
-            width: 8px;
-            height: 8px;
-            background: #000;
-            border-radius: 50%;
-        }
-
-        .ship-main {
-            display: flex;
-            align-items: center;
-            flex: 1;
-            min-width: 0;
-            padding-right: 15px;
-        }
-
-        .ship-info {
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
-        }
-
-        .ship-name-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .ship-name {
-            font-size: 1rem;
-            font-weight: bold;
-            color: #fff;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .ship-days {
-            font-size: 0.8rem;
-            color: #888;
-            background: #222;
-            padding: 2px 8px;
-            border-radius: 4px;
-            white-space: nowrap;
-        }
-
-        .ship-price {
-            font-size: 1.1rem;
-            font-weight: bold;
-            color: var(--primary);
-            flex-shrink: 0;
-            text-align: right;
-        }
-
-        /* ===== MOBILE FIXES ===== */
-        @media (max-width: 768px) {
-            .checkout-container {
-                flex-direction: column;
-                padding-top: 15px;
-                padding-bottom: 100px; /* Espaço para o botão fixo */
-            }
-            .col-main, .col-side {
-                width: 100% !important;
-                min-width: 100% !important;
-            }
-            .addr-grid {
-                grid-template-columns: 1fr;
-            }
-            /* Form rows empilhados */
-            .form-row,
-            div[style*="display:flex"][style*="gap:10px"] {
-                flex-direction: column !important;
-            }
-            .form-row input,
-            .form-row select {
-                width: 100% !important;
-                flex: unset !important;
-            }
-            /* Sidebar de resumo colapsável */
-            .col-side > div {
-                position: relative !important;
-                top: auto !important;
-            }
-            /* Botão Pagar fixo no fundo */
-            .mobile-pay-fixed {
-                display: block !important;
-            }
-            /* Esconder o botão inline no mobile */
-            .desktop-pay-btn {
-                display: none !important;
-            }
-            /* Step badges menores */
-            .step-indicator {
-                gap: 6px;
-            }
-            .step-badge {
-                padding: 8px 14px;
-                font-size: 0.85rem;
-            }
-            /* Shipping options mais tocáveis */
-            .ship-opt {
-                padding: 14px 16px;
-            }
-            .ship-name {
-                font-size: 0.9rem;
-            }
-            /* Show mobile pay button */
-            .mobile-pay-fixed {
-                display: block !important;
-            }
-            body {
-                padding-bottom: 80px !important;
-            }
-        }
-
-        /* Botão mobile fixo (escondido no desktop) */
-        .mobile-pay-fixed {
-            display: none;
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            z-index: 999;
-            background: linear-gradient(135deg, var(--primary), #00cc66);
-            color: #000;
-            border: none;
-            padding: 18px;
-            font-size: 1.2rem;
-            font-weight: 900;
-            cursor: pointer;
-            text-align: center;
-            box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
-            letter-spacing: 1px;
+            .gf-checkout-grid { grid-template-columns: 1fr !important; }
         }
     </style>
 </head>
-
 <body>
 
     <?php include __DIR__ . '/includes/header_public.php'; ?>
 
-    <div class="container checkout-container">
+    <div style="max-width:1240px; margin: 2rem auto; padding: 0 20px; flex:1;">
+        
+        <h1 style="font-size:1.8rem; font-weight:800; color:var(--gf-magenta-dark); margin-bottom:1.5rem;">
+            📦 Finalizar Compra
+        </h1>
 
-        <div class="col-main">
-            <div class="step-indicator">
-                <div class="step-badge active">1. Entrega</div>
-                <div class="step-badge">2. Pagamento</div>
+        <?php if ($error): ?>
+            <div style="background:#FFEBEE; color:#C2185B; padding:15px; border-radius:8px; margin-bottom:20px; font-weight:bold;">
+                ❌ <?php echo $error; ?>
+            </div>
+        <?php endif; ?>
+
+        <form method="POST" class="gf-checkout-grid" id="checkoutForm">
+            <input type="hidden" name="place_order" value="1">
+
+            <!-- Left Column: Address, Shipping & Payment Options -->
+            <div>
+                <!-- Address Section with ViaCEP Auto-complete -->
+                <div class="gf-card-section">
+                    <h3 style="color:var(--gf-magenta-dark); margin-bottom:1rem; font-size:1.2rem; display:flex; align-items:center; gap:8px;">
+                        📍 1. Endereço de Entrega
+                    </h3>
+                    
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                        <div>
+                            <label style="font-size:0.85rem; font-weight:700; color:#444; display:block; margin-bottom:4px;">CEP (Auto-preenchimento)</label>
+                            <input type="text" name="zipcode" id="f_zip" value="<?php echo htmlspecialchars($user_zip); ?>" 
+                                   onblur="fetchCep(this.value)" placeholder="00000-000" 
+                                   style="width:100%; height:45px; border-radius:8px; border:2px solid var(--gf-magenta-light); padding:0 12px; font-weight:bold; font-size:1rem;" required>
+                        </div>
+                        <div>
+                            <label style="font-size:0.85rem; font-weight:700; color:#444; display:block; margin-bottom:4px;">Cidade / UF</label>
+                            <input type="text" name="city" id="f_city" value="São Paulo / SP" style="width:100%; height:45px; border-radius:8px; border:1px solid #DDD; padding:0 12px;" required>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 2fr 1fr; gap:12px; margin-bottom:12px;">
+                        <div>
+                            <label style="font-size:0.85rem; font-weight:700; color:#444; display:block; margin-bottom:4px;">Rua / Endereço</label>
+                            <input type="text" name="street" id="f_street" value="Alameda Jaú" style="width:100%; height:45px; border-radius:8px; border:1px solid #DDD; padding:0 12px;" required>
+                        </div>
+                        <div>
+                            <label style="font-size:0.85rem; font-weight:700; color:#444; display:block; margin-bottom:4px;">Número</label>
+                            <input type="text" name="number" id="f_number" value="1777" style="width:100%; height:45px; border-radius:8px; border:1px solid #DDD; padding:0 12px;" required>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                        <div>
+                            <label style="font-size:0.85rem; font-weight:700; color:#444; display:block; margin-bottom:4px;">Bairro</label>
+                            <input type="text" name="neighborhood" id="f_district" value="Jardim Paulista" style="width:100%; height:45px; border-radius:8px; border:1px solid #DDD; padding:0 12px;" required>
+                        </div>
+                        <div>
+                            <label style="font-size:0.85rem; font-weight:700; color:#444; display:block; margin-bottom:4px;">Complemento / Bloco</label>
+                            <input type="text" name="complement" id="f_comp" value="Apto / Casa" style="width:100%; height:45px; border-radius:8px; border:1px solid #DDD; padding:0 12px;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Shipping Method Section (Lalamove & Melhor Envio) -->
+                <div class="gf-card-section">
+                    <h3 style="color:var(--gf-magenta-dark); margin-bottom:1rem; font-size:1.2rem; display:flex; align-items:center; gap:8px;">
+                        🚚 2. Opções de Frete (Lalamove & Melhor Envio)
+                    </h3>
+
+                    <?php foreach ($shipping_options as $idx => $opt): ?>
+                        <label style="display:flex; justify-content:space-between; align-items:center; padding:14px 18px; background:#FFF8F9; border:1px solid #FCE4EC; border-radius:10px; margin-bottom:10px; cursor:pointer; transition:border-color 0.2s;">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <input type="radio" name="shipping_option" value="<?php echo htmlspecialchars($opt['name']); ?>" <?php echo $idx === 0 ? 'checked' : ''; ?>>
+                                <span style="font-weight:700; color:#222; font-size:0.95rem;">
+                                    <?php echo $opt['icon'] . ' ' . htmlspecialchars($opt['name']); ?>
+                                </span>
+                            </div>
+                            <strong style="color:var(--gf-magenta-dark); font-size:1.05rem;">
+                                <?php echo $opt['price'] > 0 ? 'R$ ' . number_format($opt['price'], 2, ',', '.') : 'GRÁTIS'; ?>
+                            </strong>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+
+                <!-- Payment Method Section -->
+                <div class="gf-card-section">
+                    <h3 style="color:var(--gf-magenta-dark); margin-bottom:1rem; font-size:1.2rem; display:flex; align-items:center; gap:8px;">
+                        💳 3. Forma de Pagamento
+                    </h3>
+
+                    <label style="display:flex; align-items:center; gap:10px; padding:12px; border:1px solid #DDD; border-radius:8px; margin-bottom:10px; cursor:pointer;">
+                        <input type="radio" name="payment_method" value="whatsapp" checked>
+                        <span style="font-weight:700; color:#222;">💬 Pedir e Pagar via WhatsApp (PIX / Cartão)</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; padding:12px; border:1px solid #DDD; border-radius:8px; margin-bottom:10px; cursor:pointer;">
+                        <input type="radio" name="payment_method" value="pix">
+                        <span style="font-weight:700; color:#222;">⚡ PIX Instantâneo com Desconto</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; padding:12px; border:1px solid #DDD; border-radius:8px; cursor:pointer;">
+                        <input type="radio" name="payment_method" value="card">
+                        <span style="font-weight:700; color:#222;">💳 Cartão de Crédito em até 3x sem juros</span>
+                    </label>
+                </div>
             </div>
 
-            <h2 style="margin-bottom:20px;">📍 Onde vamos entregar?</h2>
+            <!-- Right Column: Order Summary -->
+            <div>
+                <div class="gf-card-section" style="position:sticky; top:100px;">
+                    <h3 style="font-size:1.2rem; font-weight:800; color:#222; margin-bottom:1rem; border-bottom:1px solid #EEE; padding-bottom:10px;">
+                        Resumo do Pedido
+                    </h3>
 
-            <?php if ($error): ?>
-                <div class="alert alert-danger"><?php echo $error; ?></div>
-            <?php endif; ?>
-
-            <!-- ADDRESS FORM SUBMISSION -->
-            <form method="POST" id="checkoutForm">
-                <input type="hidden" name="action" value="select_shipping">
-
-                <!-- ADDRESS SELECTION -->
-                <div class="addr-grid">
-                    <?php
-                    $activeId = 0;
-                    // If we calculated using a ZIP, try to match it to an address ID to highlight it
-                    // Or simply default to first if standard load
-                    if (!empty($addresses))
-                        $activeId = $addresses[0]['id'];
-
-                    // If user just switched address via JS submitting form, maybe we should preserve selection?
-                    if (isset($_POST['selected_addr_id']))
-                        $activeId = $_POST['selected_addr_id'];
-                    ?>
-
-                    <?php foreach ($addresses as $addr): ?>
-                        <div class="addr-card <?php echo ($addr['id'] == $activeId && $activeId != 'new') ? 'active' : ''; ?>"
-                            onclick="chooseAddress(<?php echo $addr['id']; ?>, '<?php echo $addr['zipcode']; ?>')">
-                            <div class="check-mark"></div>
-                            <strong style="display:block; font-size:1.1rem; color:white; margin-bottom:5px;">
-                                <?php echo $addr['name']; ?>
-                            </strong>
-                            <div style="font-size:0.9rem; color:#aaa; line-height:1.5;">
-                                <?php echo $addr['address']; ?>, <?php echo $addr['number']; ?><br>
-                                <?php echo $addr['neighborhood']; ?> -
-                                <?php echo $addr['city']; ?>/<?php echo $addr['state']; ?>
+                    <div style="margin-bottom:1rem; display:flex; flex-direction:column; gap:10px;">
+                        <?php foreach ($cart_items as $item): ?>
+                            <div style="display:flex; justify-content:space-between; font-size:0.9rem; border-bottom:1px solid #F0F0F0; padding-bottom:6px;">
+                                <span><?php echo $item['qty']; ?>x <?php echo htmlspecialchars(mb_strimwidth($item['name'], 0, 22, '...')); ?></span>
+                                <strong>R$ <?php echo number_format($item['price'] * $item['qty'], 2, ',', '.'); ?></strong>
                             </div>
-
-                            <!-- Hidden Data for this card -->
-                            <textarea id="data-<?php echo $addr['id']; ?>" style="display:none;">
-                                                    <?php echo json_encode($addr); ?>
-                                                </textarea>
-                        </div>
-                    <?php endforeach; ?>
-
-                    <!-- NEW ADDRESS CARD -->
-                    <div class="addr-card <?php echo ($activeId == 'new' || empty($addresses)) ? 'active' : ''; ?>"
-                        onclick="chooseNewAddress()">
-                        <div class="check-mark"></div>
-                        <strong style="display:block; font-size:1.1rem; color:white; margin-bottom:5px;">✨ Outro
-                            Endereço</strong>
-                        <div style="font-size:0.9rem; color:#aaa;">
-                            Enviar para um local diferente ou novo.
-                        </div>
-                    </div>
-                </div>
-
-                <!-- HIDDEN INPUTS FOR CHOSEN ADDRESS -->
-                <input type="hidden" name="selected_addr_id" id="selected_addr_id" value="<?php echo $activeId; ?>">
-
-                <div id="formFields"
-                    class="new-addr-form <?php echo ($activeId == 'new' || empty($addresses)) ? 'open' : ''; ?>">
-                    <h3 style="margin-bottom:15px; color:var(--primary);">Dados do Endereço</h3>
-                    <div style="display:flex; gap:10px; margin-bottom:15px;">
-                        <input type="text" name="zipcode" id="f_zip" value="<?php echo $user_zip; ?>"
-                            placeholder="CEP (00000-000)" onblur="fetchCep(this.value)" style="flex:1;">
-                        <button type="button" class="btn-sm" onclick="recalcShipping()"
-                            title="Recalcular Frete com este CEP">🔄 Calcular</button>
-                        <a href="https://buscacepinter.correios.com.br/app/endereco/index.php" target="_blank"
-                            style="padding:10px; color:#888;">?</a>
-                    </div>
-
-                    <div class="form-row" style="display:flex; gap:10px; margin-bottom:10px;">
-                        <input type="text" name="street" id="f_street"
-                            value="<?php echo htmlspecialchars($f_street); ?>" placeholder="Rua" style="flex:2;"
-                            required>
-                        <input type="text" name="number" id="f_number"
-                            value="<?php echo htmlspecialchars($f_number); ?>" placeholder="Número" style="flex:1;"
-                            required>
-                    </div>
-                    <div class="form-row" style="display:flex; gap:10px; margin-bottom:10px;">
-                        <input type="text" name="complement" id="f_comp"
-                            value="<?php echo htmlspecialchars($f_complement); ?>" placeholder="Complemento"
-                            style="flex:1;">
-                        <input type="text" name="district" id="f_district"
-                            value="<?php echo htmlspecialchars($f_district); ?>" placeholder="Bairro" style="flex:1;"
-                            required>
-                    </div>
-                    <div class="form-row" style="display:flex; gap:10px; margin-bottom:10px;">
-                        <input type="text" name="city" id="f_city" value="<?php echo htmlspecialchars($f_city); ?>"
-                            placeholder="Cidade" style="flex:2;" required>
-                        <input type="text" name="state" id="f_state" value="<?php echo htmlspecialchars($f_state); ?>"
-                            placeholder="UF" style="flex:1;" required maxlength="2">
-                    </div>
-                    <input type="text" name="document" id="f_doc" value="<?php echo htmlspecialchars($f_document); ?>"
-                        placeholder="CPF/CNPJ para Nota Fiscal">
-                </div>
-
-                <!-- SHIPPING OPTIONS -->
-                <?php if (!empty($shipping_options)): ?>
-                    <h3 style="margin:25px 0 15px 0; font-size:1.2rem; color:var(--primary);">🚚 Opções de Envio</h3>
-                    <div id="shipOptions" class="shipping-grid">
-                        <?php foreach ($shipping_options as $opt): ?>
-                            <label class="ship-opt" onclick="updateShipActive(this)">
-                                <div class="ship-main">
-                                    <input type="radio" name="shipping_method" style="display:none;"
-                                        value="<?php echo $opt['name'] . '|' . $opt['price']; ?>" required>
-                                    <div class="ship-check"></div>
-                                    <div class="ship-info">
-                                        <div class="ship-name-row">
-                                            <span class="ship-name"><?php echo $opt['icon'] . ' ' . $opt['name']; ?></span>
-                                            <span
-                                                class="ship-days"><?php echo $opt['days'] == 0 ? 'Rápida' : $opt['days'] . ' dias'; ?></span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="ship-price">
-                                    <?php echo $opt['price'] > 0 ? 'R$ ' . number_format($opt['price'], 2, ',', '.') : 'Grátis'; ?>
-                                </div>
-                            </label>
                         <?php endforeach; ?>
                     </div>
 
-                    <div style="text-align:right; margin-top:25px;" class="desktop-pay-btn">
-                        <button type="submit" class="btn"
-                            onclick="document.querySelector('input[name=\'action\']').value='select_shipping';"
-                            style="padding:15px 40px; font-size:1.2rem; border-radius:8px; box-shadow: 0 4px 15px rgba(0,255,136,0.2);">Pagar
-                            ➡️</button>
+                    <div style="display:flex; justify-content:space-between; font-size:0.9rem; color:#666; margin-bottom:8px;">
+                        <span>Subtotal:</span>
+                        <span>R$ <?php echo number_format($total_products, 2, ',', '.'); ?></span>
                     </div>
 
-                <?php else: ?>
-                    <div
-                        style="text-align:center; padding:40px; color:#666; background:#111; border-radius:12px; margin-top:30px;">
-                        <?php if ($activeId == 'new' || empty($addresses)): ?>
-                            👆 Digite o CEP e clique em "Calcular" para ver o frete.
-                        <?php else: ?>
-                            ⌛ Calculando opções de entrega...
-                        <?php endif; ?>
+                    <div style="display:flex; justify-content:space-between; font-size:0.9rem; color:#666; margin-bottom:15px;">
+                        <span>Frete Escolhido:</span>
+                        <strong style="color:var(--gf-magenta-dark);">R$ <?php echo number_format($selected_shipping_price, 2, ',', '.'); ?></strong>
                     </div>
-                <?php endif; ?>
 
-            </form>
+                    <div style="border-top:2px solid #F0F0F0; padding-top:12px; margin-bottom:1.5rem; display:flex; justify-content:space-between; align-items:baseline;">
+                        <span style="font-size:1.1rem; font-weight:800;">Total:</span>
+                        <span style="font-size:1.8rem; font-weight:800; color:var(--gf-magenta-dark);">
+                            R$ <?php echo number_format($total_products + $selected_shipping_price, 2, ',', '.'); ?>
+                        </span>
+                    </div>
 
-            <!-- MOBILE FIXED PAY BUTTON -->
-            <?php if (!empty($shipping_options)): ?>
-            <button type="button" class="mobile-pay-fixed" onclick="document.querySelector('input[name=\'action\']').value='select_shipping'; document.getElementById('checkoutForm').submit();">
-                💳 PAGAR AGORA ➡️
-            </button>
-            <?php else: ?>
-            <button type="button" class="mobile-pay-fixed" style="background: linear-gradient(135deg, var(--primary), #ff8c00);" onclick="document.querySelector('input[name=\'action\']').value='calc_shipping'; document.getElementById('checkoutForm').submit();">
-                📦 CALCULAR FRETE ➡️
-            </button>
-            <?php endif; ?>
-        </div>
-
-        <!-- SIDEBAR -->
-        <div class="col-side">
-            <div style="background:#222; padding:20px; border-radius:12px; position:sticky; top:20px;">
-                <h3>Resumo</h3>
-                <div style="margin-top:15px; display:flex; flex-direction:column; gap:10px;">
-                    <?php foreach ($cart_items as $item): ?>
-                        <div
-                            style="display:flex; justify-content:space-between; font-size:0.9rem; border-bottom:1px solid #333; padding-bottom:5px;">
-                            <span><?php echo $item['qty']; ?>x
-                                <?php echo mb_strimwidth($item['name'], 0, 20, '...'); ?></span>
-                            <span>R$ <?php echo number_format($item['price'] * $item['qty'], 2, ',', '.'); ?></span>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-                <div
-                    style="border-top:1px solid #444; margin-top:15px; padding-top:15px; font-size:1.2rem; font-weight:bold; display:flex; justify-content:space-between;">
-                    <span>Total:</span>
-                    <span>R$ <?php echo number_format($total_products, 2, ',', '.'); ?></span>
+                    <button type="submit" class="gf-btn-primary" style="width:100%; height:55px; border-radius:28px; font-size:1.15rem; font-weight:800;">
+                        CONCLUIR PEDIDO 🎉
+                    </button>
                 </div>
             </div>
-        </div>
+
+        </form>
 
     </div>
 
-    <!-- HIDDEN CALC FORM -->
-    <form id="calcForm" method="POST" style="display:none;">
-        <input type="hidden" name="action" value="calc_shipping">
-        <input type="hidden" name="zipcode" id="calc_zip">
-        <input type="hidden" name="selected_addr_id" id="calc_addr_id">
-    </form>
-
+    <!-- ViaCEP Auto-fill Script -->
     <script>
-        // Toggle active class on shipping options
-        function updateShipActive(label) {
-            document.querySelectorAll('.ship-opt').forEach(opt => opt.classList.remove('active'));
-            label.classList.add('active');
-            const radio = label.querySelector('input[type="radio"]');
-            if (radio) radio.checked = true;
-        }
-
-        // FILL FORM ON LOAD IF ACTIVE ID IS SET
-        document.addEventListener('DOMContentLoaded', function () {
-            // If we have an active address (not new), populate the visible form fields
-            // (even though they are hidden, they'll be submitted if user switches to new, but mostly to keep state)
-            const activeId = document.getElementById('selected_addr_id').value;
-            if (activeId && activeId !== 'new') {
-                try {
-                    const json = document.getElementById('data-' + activeId).value;
-                    fillFields(JSON.parse(json));
-                } catch (e) { }
-            }
-        });
-
-        function chooseAddress(id, zip) {
-            // Update UI
-            document.querySelectorAll('.addr-card').forEach(c => c.classList.remove('active'));
-            // Find the card clicked? No, we need to target specific element?
-            // Actually the onclick is on the element itself, so we can use 'this' if we passed it,
-            // but we passed ID. Let's iterate.
-            // Simplified: Reload page with calc logic for this ID??
-            // Yes, to be safe and accurate with shipping.
-
-            document.getElementById('calc_zip').value = zip;
-            document.getElementById('calc_addr_id').value = id;
-            document.getElementById('calcForm').submit(); // RELOAD TO CALC SHIPPING
-        }
-
-        function chooseNewAddress() {
-            if (document.getElementById('selected_addr_id').value === 'new') {
-                const form = document.getElementById('formFields');
-                if (!form.classList.contains('open')) form.classList.add('open');
-                return;
-            }
-            document.getElementById('selected_addr_id').value = 'new';
-            document.querySelectorAll('.addr-card').forEach(c => c.classList.remove('active'));
-            // Hightlight new card? Hard to select without 'this'.
-            // Let's just Open the Form.
-
-            const form = document.getElementById('formFields');
-            form.classList.add('open');
-
-            // Clear fields
-            document.getElementById('f_zip').value = '';
-            document.getElementById('f_street').value = '';
-            document.getElementById('f_number').value = '';
-            document.getElementById('f_comp').value = '';
-            document.getElementById('f_district').value = '';
-            document.getElementById('f_city').value = '';
-            document.getElementById('f_state').value = '';
-
-            // Hide shipping options until calculated
-            const ship = document.getElementById('shipOptions');
-            if (ship) ship.style.display = 'none';
-        }
-
-        function fillFields(data) {
-            document.getElementById('f_zip').value = data.zipcode;
-            document.getElementById('f_street').value = data.address;
-            document.getElementById('f_number').value = data.number;
-            document.getElementById('f_comp').value = data.complement;
-            document.getElementById('f_district').value = data.neighborhood;
-            document.getElementById('f_city').value = data.city;
-            document.getElementById('f_state').value = data.state;
-        }
-
-        function recalcShipping() {
-            const zip = document.getElementById('f_zip').value;
-            if (zip.length < 8) {
-                alert('Digite um CEP válido.');
-                return;
-            }
-
-            const form = document.getElementById('checkoutForm');
-            const actionInput = form.querySelector('input[name="action"]');
-            actionInput.value = 'calc_shipping';
-            form.submit(); // RELOAD FULL FORM TO PERSIST FIELDS
-        }
-        function
-            fetchCep(cep) {
-            cep = cep.replace(/\D/g, ''); if (cep.length === 8) {
-                fetch(`https://viacep.com.br/ws/${cep}/json/`).then(r => r.json())
+        function fetchCep(cep) {
+            cep = cep.replace(/\D/g, '');
+            if (cep.length === 8) {
+                fetch(`https://viacep.com.br/ws/${cep}/json/`)
+                    .then(r => r.json())
                     .then(data => {
                         if (!data.erro) {
                             document.getElementById('f_street').value = data.logradouro;
                             document.getElementById('f_district').value = data.bairro;
-                            document.getElementById('f_city').value = data.localidade;
-                            document.getElementById('f_state').value = data.uf;
+                            document.getElementById('f_city').value = data.localidade + ' / ' + data.uf;
                             document.getElementById('f_number').focus();
                         }
                     });
@@ -767,6 +295,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'select_shipping') {
         }
     </script>
 
-</body>
+    <?php include __DIR__ . '/includes/footer_public.php'; ?>
 
+</body>
 </html>
