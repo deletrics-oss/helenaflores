@@ -1,105 +1,56 @@
 <?php
-require_once __DIR__ . 
-'/config.php';
-require_once __DIR__ . 
-'/includes/db.php';
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
 
-// Configurações do Melhor Envio
-define('MELHOR_ENVIO_API_URL', 'https://www.melhorenvio.com.br/api/v2/me/shipment/calculate'); // URL da API de cálculo de frete
-define('MELHOR_ENVIO_SANDBOX_API_URL', 'https://sandbox.melhorenvio.com.br/api/v2/me/shipment/calculate'); // URL da API de cálculo de frete (sandbox)
-define('MELHOR_ENVIO_TOKEN', 'YOUR_MELHOR_ENVIO_TOKEN'); // Substitua pelo seu token de acesso do Melhor Envio
-define('MELHOR_ENVIO_USER_AGENT', 'Fight Arcade (seu_email@exemplo.com)'); // Substitua pelo nome da sua aplicação e seu email
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
-function calculateMelhorEnvioShipping($from_zipcode, $to_zipcode, $products, $options = []) {
-    $payload = [
-        'from' => [
-            'postal_code' => $from_zipcode,
-        ],
-        'to' => [
-            'postal_code' => $to_zipcode,
-        ],
-        'products' => array_map(function($product) {
-            return [
-                'id' => $product['id'],
-                'width' => $product['width'],
-                'height' => $product['height'],
-                'length' => $product['length'],
-                'weight' => $product['weight'],
-                'quantity' => $product['quantity'],
-            ];
-        }, $products),
-        'options' => $options,
-    ];
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
-    $headers = [
-        'Accept: application/json',
-        'Content-Type: application/json',
-        'Authorization: Bearer ' . MELHOR_ENVIO_TOKEN,
-        'User-Agent: ' . MELHOR_ENVIO_USER_AGENT,
-    ];
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
 
-    // Use a URL de sandbox para testes e a de produção para ambiente real
-    $api_url = MELHOR_ENVIO_SANDBOX_API_URL; // Altere para MELHOR_ENVIO_API_URL em produção
-
-    $ch = curl_init($api_url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($http_code === 200) {
-        return json_decode($response, true);
-    } else {
-        throw new Exception("Erro ao calcular frete Melhor Envio: " . $response);
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
 }
 
-// Exemplo de uso
-if (isset($_GET["action"]) && $_GET["action"] === "calculate_shipping") {
-    $from_zipcode = "01001000"; // CEP de origem (exemplo)
-    $to_zipcode = "04547000";   // CEP de destino (exemplo)
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
 
-    // Simular produtos com dimensões e peso
-    $products_to_ship = [
-        [
-            'id' => 1,
-            'width' => 15, // cm
-            'height' => 10, // cm
-            'length' => 20, // cm
-            'weight' => 1.5, // kg
-            'quantity' => 1,
-        ],
-        [
-            'id' => 2,
-            'width' => 20,
-            'height' => 15,
-            'length' => 25,
-            'weight' => 2.0,
-            'quantity' => 2,
-        ],
-    ];
+$notif = new NotificationService($pdo);
 
-    try {
-        $shipping_options = calculateMelhorEnvioShipping($from_zipcode, $to_zipcode, $products_to_ship);
-        echo "<pre>";
-        print_r($shipping_options);
-        echo "</pre>";
-    } catch (Exception $e) {
-        echo "Erro: " . $e->getMessage();
-    }
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
 }
 
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
 ?>
-
-<!-- Exemplo de formulário para cálculo de frete -->
-<form action="?action=calculate_shipping" method="GET">
-    <label for="from_zip">CEP Origem:</label>
-    <input type="text" id="from_zip" name="from_zip" value="01001000"><br><br>
-    <label for="to_zip">CEP Destino:</label>
-    <input type="text" id="to_zip" name="to_zip" value="04547000"><br><br>
-    <button type="submit">Calcular Frete Melhor Envio</button>
-</form>
