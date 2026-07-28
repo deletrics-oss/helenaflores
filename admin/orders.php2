@@ -1,0 +1,128 @@
+<?php
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/user_auth.php';
+isAdmin();
+
+// Handle Status Update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    if ($_POST['action'] === 'update_status') {
+        $oid = $_POST['order_id'];
+        $status = $_POST['status'];
+        $track = $_POST['tracking_code'] ?? null;
+
+        $sql = "UPDATE orders SET status = :st, tracking_code = :track WHERE id = :id";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([':st' => $status, ':track' => $track, ':id' => $oid]);
+    }
+    header("Location: orders.php");
+    exit;
+}
+
+// Fetch orders
+$stmt = $pdo->query("SELECT o.*, u.name as user_name, u.phone, u.email FROM orders o JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC");
+$orders = $stmt->fetchAll();
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Gerenciar Pedidos | Admin</title>
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+
+<body>
+
+    <?php include 'header.php'; ?>
+
+    <div class="container" style="padding-top:2rem;">
+        <h1>Todos os Pedidos</h1>
+
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Data</th>
+                        <th>Cliente</th>
+                        <th>Contato</th> <!-- Whatsapp link -->
+                        <th>Total</th>
+                        <th>Status / Rastreio</th>
+                        <th>Itens</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($orders as $o):
+                        // Get items
+                        $items = $pdo->query("SELECT * FROM order_items WHERE order_id = {$o['id']}")->fetchAll();
+                        ?>
+                        <tr>
+                            <td>#
+                                <?php echo $o['id']; ?>
+                            </td>
+                            <td>
+                                <?php echo date('d/m H:i', strtotime($o['created_at'])); ?>
+                            </td>
+                            <td>
+                                <?php echo htmlspecialchars($o['user_name']); ?>
+                            </td>
+                            <td>
+                                <a href="https://api.whatsapp.com/send?phone=<?php echo preg_replace('/\D/', '', $o['phone']); ?>&text=Ol%C3%A1%2C%20sobre%20o%20pedido%20%23<?php echo $o['id']; ?>"
+                                    target="_blank" style="color:var(--success)">
+                                    WhatsApp
+                                </a>
+                            </td>
+                            <td>R$
+                                <?php echo number_format($o['total_amount'], 2, ',', '.'); ?>
+                            </td>
+                            <td>
+                                <form method="POST" style="display:flex; flex-direction:column; gap:5px; min-width:150px;">
+                                    <input type="hidden" name="action" value="update_status">
+                                    <input type="hidden" name="order_id" value="<?php echo $o['id']; ?>">
+
+                                    <select name="status" onchange="this.form.submit()"
+                                        style="padding:5px; margin:0; font-size:0.8rem">
+                                        <option value="pending" <?php if ($o['status'] == 'pending')
+                                            echo 'selected'; ?>
+                                            >Pendente</option>
+                                        <option value="paid" <?php if ($o['status'] == 'paid')
+                                            echo 'selected'; ?>>Pago
+                                        </option>
+                                        <option value="shipped" <?php if ($o['status'] == 'shipped')
+                                            echo 'selected'; ?>
+                                            >Enviado</option>
+                                        <option value="canceled" <?php if ($o['status'] == 'canceled')
+                                            echo 'selected'; ?>
+                                            >Cancelado</option>
+                                    </select>
+
+                                    <?php if ($o['status'] == 'shipped' || $o['status'] == 'paid'): ?>
+                                        <input type="text" name="tracking_code" placeholder="Cód. Rastreio"
+                                            value="<?php echo htmlspecialchars($o['tracking_code'] ?? ''); ?>"
+                                            style="padding:5px; margin:0; font-size:0.8rem" onblur="this.form.submit()">
+                                    <?php endif; ?>
+                                </form>
+                            </td>
+                            <td style="font-size:0.85rem; color:#ccc;">
+                                <?php foreach ($items as $i): ?>
+                                    <div>
+                                        <?php echo $i['quantity']; ?>x
+                                        <?php echo htmlspecialchars($i['product_name']); ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </td>
+                            <td>
+                                <!-- Delete Logic could go here -->
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</body>
+
+</html>
