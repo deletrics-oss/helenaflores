@@ -1,0 +1,114 @@
+<?php
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/user_auth.php';
+isAdmin();
+
+// Delete Action
+if (isset($_GET['delete'])) {
+    $id = (int) $_GET['delete'];
+    $pdo->query("DELETE FROM products WHERE id = $id");
+    header("Location: products.php");
+    exit;
+}
+
+$products = $pdo->query("SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id ORDER BY p.name ASC")->fetchAll();
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Produtos | Admin</title>
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+
+<body>
+
+    <?php include 'header.php'; ?>
+
+    <div class="container" style="padding-top:2rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <h1>Produtos</h1>
+            <div>
+                <a href="import-product.php" class="btn" style="background:var(--accent); margin-right:10px;">🤖
+                    Importar com IA</a>
+                <a href="product-edit.php" class="btn">Novo Produto</a>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>IMG</th>
+                        <th>Nome</th>
+                        <th>SKU</th>
+                        <th>Categoria</th>
+                        <th>Preço Varejo</th>
+                        <th>Preço Atacado</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($products as $p): ?>
+                        <tr>
+                            <td>
+                                <?php if ($p['image_path']): ?>
+                                    <img src="../assets/uploads/<?php echo $p['image_path']; ?>"
+                                        style="width:50px; height:50px; object-fit:cover;">
+                                <?php else: ?>
+                                    <div style="width:50px; height:50px; background:#333;"></div>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php echo htmlspecialchars($p['name']); ?>
+
+                                <?php if (!empty($p['is_vip'])): ?>
+                                    <span
+                                        style="background:gold; color:black; padding:2px 6px; border-radius:4px; font-size:0.7rem; font-weight:bold; margin-left:5px;">👑
+                                        VIP</span>
+                                <?php endif; ?>
+
+                                <?php if (!empty($p['is_manufactured'])): ?>
+                                    <span
+                                        style="background:#4cc9f0; color:black; padding:2px 6px; border-radius:4px; font-size:0.7rem; font-weight:bold; margin-left:5px;">🏭
+                                        FÁBRICA</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php echo htmlspecialchars($p['sku']); ?>
+                            </td>
+                            <td>
+                                <?php echo htmlspecialchars($p['category_name'] ?? '-'); ?>
+                            </td>
+                            <td>R$
+                                <?php echo number_format($p['price'], 2, ',', '.'); ?>
+                            </td>
+                            <td>
+                                <?php if ($p['price_wholesale']): ?>
+                                    R$
+                                    <?php echo number_format($p['price_wholesale'], 2, ',', '.'); ?><br>
+                                    <small>min:
+                                        <?php echo $p['min_wholesale_qty']; ?>
+                                    </small>
+                                <?php else: ?>
+                                    -
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <a href="product-edit.php?id=<?php echo $p['id']; ?>"
+                                    class="btn-sm btn-secondary">Editar</a>
+                                <a href="?delete=<?php echo $p['id']; ?>" class="btn-sm btn-danger"
+                                    onclick="return confirm('Tem certeza?')">X</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</body>
+
+</html>
