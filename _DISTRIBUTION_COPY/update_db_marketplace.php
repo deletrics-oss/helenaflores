@@ -1,55 +1,56 @@
 <?php
 /**
- * Atualização do Banco de Dados para Marketplace
- * Adiciona campos necessários para exportação Shopee/ML
- * 
- * COMO USAR: Acesse http://localhost/catalogo/update_db_marketplace.php
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
  */
-require_once 'includes/db.php';
 
-echo "<h1>🔧 Atualizando Banco de Dados...</h1>";
-echo "<pre>";
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
-$queries = [
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS ean VARCHAR(50) NULL",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS ncm VARCHAR(20) NULL",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100) NULL",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS gtin VARCHAR(50) NULL",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS mpn VARCHAR(50) NULL",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS weight_kg DECIMAL(10,3) DEFAULT 0.100",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS length_cm INT DEFAULT 20",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS width_cm INT DEFAULT 15",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS height_cm INT DEFAULT 10",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS video_url VARCHAR(255) NULL",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS condition_status VARCHAR(20) DEFAULT 'new'",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS seo_title VARCHAR(255) NULL",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS seo_description TEXT NULL"
-];
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
-$success = 0;
-$skipped = 0;
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
 
-foreach ($queries as $sql) {
-    try {
-        $pdo->exec($sql);
-        $success++;
-        echo "✅ OK\n";
-    } catch (PDOException $e) {
-        // Se a coluna já existe, não é erro
-        if (
-            strpos($e->getMessage(), 'Duplicate column') !== false ||
-            strpos($e->getMessage(), 'already exists') !== false
-        ) {
-            $skipped++;
-            echo "⏭️ Já existe, pulando...\n";
-        } else {
-            echo "❌ Erro: " . $e->getMessage() . "\n";
-        }
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
 }
 
-echo "</pre>";
-echo "<h2>✅ Concluído!</h2>";
-echo "<p>$success colunas adicionadas, $skipped já existiam.</p>";
-echo "<p><a href='admin/products.php'>👉 Ir para Produtos</a></p>";
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
+
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
 ?>
