@@ -1,151 +1,106 @@
 <?php
 /**
- * index.php — Helena Flores (Loja & Catálogo Giuliana Style Completo)
+ * index.php — Helena Flores (Loja Principal Estilo Giuliana Flores)
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/db.php';
-ob_start();
 
-$is_logged_in = isset($_SESSION['user_id']);
-$baseUrl = defined('BASE_URL') ? BASE_URL : '';
+// Params
+$catId = isset($_GET['cat']) ? (int)$_GET['cat'] : 0;
+$query = isset($_GET['q']) ? trim($_GET['q']) : '';
 
-// Filter Logic
-$cat_id = isset($_GET['cat']) ? (int) $_GET['cat'] : 0;
-$search = isset($_GET['q']) ? trim($_GET['q']) : '';
-
-// Build Query
+// Query Builder
 $sql = "SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.active = 1";
 $params = [];
 
-if ($cat_id) {
-    $sql .= " AND p.category_id = :cat";
-    $params[':cat'] = $cat_id;
+if ($catId > 0) {
+    $sql .= " AND p.category_id = ?";
+    $params[] = $catId;
 }
 
-if ($search) {
-    $sql .= " AND (p.name LIKE :q1 OR p.description LIKE :q2 OR p.sku LIKE :q3)";
-    $params[':q1'] = "%$search%";
-    $params[':q2'] = "%$search%";
-    $params[':q3'] = "%$search%";
+if (!empty($query)) {
+    $sql .= " AND (p.name LIKE ? OR p.description LIKE ?)";
+    $params[] = "%{$query}%";
+    $params[] = "%{$query}%";
 }
 
 $sql .= " ORDER BY p.featured DESC, p.id DESC";
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$products = $stmt->fetchAll();
 
-// ------------------------------------------------------------------
-// BANNERS CAROUSEL LOGIC — 10 TO 15 ITEMS + 3 DAILY AUTO-PRODUCT BANNERS
-// ------------------------------------------------------------------
-$banner_slides = [];
-
-// 1. Fetch DB Banners
 try {
-    $banner_slides = $pdo->query("SELECT * FROM banners WHERE active = 1 ORDER BY display_order ASC, id DESC")->fetchAll();
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $products = $stmt->fetchAll();
+} catch (Exception $e) {
+    $products = [];
+}
+
+// Banners for Hero Slider
+$banners = [];
+try {
+    $banners = $pdo->query("SELECT * FROM banners WHERE active = 1 ORDER BY sort_order ASC, id DESC")->fetchAll();
 } catch (Exception $e) {}
 
-// 2. Curated Base Helena Flores Banners if DB is small
-$default_banners = [
+// Fallback Banner Slides if table empty
+$banner_slides = !empty($banners) ? $banners : [
     [
-        'image_path' => 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=1600&q=80',
-        'title' => 'Rosas Colombianas Selecionadas',
-        'subtitle' => 'Há mais de 11 anos cultivando emoções e carinho nos Jardins em SP.',
-        'link_url' => '#produtos'
+        'image' => 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=1600&q=80',
+        'title' => 'Buquês Exclusivos de Rosas Colombianas',
+        'subtitle' => 'Entregas Rápidas no Mesmo Dia nos Jardins & São Paulo',
+        'link' => '#produtos'
     ],
     [
-        'image_path' => 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=1600&q=80',
-        'title' => 'Cestas de Café & Presentes de Luxo',
-        'subtitle' => 'Entregas expressas no mesmo dia para surpreender quem você ama.',
-        'link_url' => '#produtos'
+        'image' => 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=1600&q=80',
+        'title' => 'Cestas de Café da Manhã Gourmet',
+        'subtitle' => 'Surpreenda com Frutas Frescas, Chocolates & Rosas',
+        'link' => '?cat=2'
     ],
     [
-        'image_path' => 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=1600&q=80',
-        'title' => 'Arranjos e Buquês Exclusivos',
-        'subtitle' => 'Flores frescas colhidas diariamente com garantia de durabilidade.',
-        'link_url' => '#produtos'
-    ],
-    [
-        'image_path' => 'https://images.unsplash.com/photo-1591886960571-74d43a9d4166?w=1600&q=80',
-        'title' => 'Coleção de Girassóis Vibrantes',
-        'subtitle' => 'Ilumine o dia de alguém especial com os melhores girassóis de SP.',
-        'link_url' => '?q=girassol'
-    ],
-    [
-        'image_path' => 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&q=80',
-        'title' => 'Fabulosas Rosas Encantadas na Cúpula',
-        'subtitle' => 'Rosas eternas preservadas que duram até 5 anos.',
-        'link_url' => '?q=encantada'
+        'image' => 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=1600&q=80',
+        'title' => 'Arranjos Especiais com Lírios & Astromélias',
+        'subtitle' => 'A Beleza Única das Flores Naturais Selecionadas',
+        'link' => '?cat=4'
     ]
 ];
 
-if (count($banner_slides) < 5) {
-    $banner_slides = array_merge($banner_slides, $default_banners);
-}
-
-// 3. Auto-Generate Banners from Products (3 Rotating Daily Products)
-$dayOfYear = date('z'); // Day 0..365
-$totalProds = count($products);
-
-if ($totalProds > 0) {
-    // Pick 3 rotating products per day
-    for ($i = 0; $i < 5; $i++) {
-        $prodIndex = ($dayOfYear + $i * 2) % $totalProds;
-        $dailyProd = $products[$prodIndex];
-        
-        $pImg = $dailyProd['image_path'] ? (strpos($dailyProd['image_path'], 'http') === 0 ? $dailyProd['image_path'] : $baseUrl . '/assets/uploads/' . $dailyProd['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=1600&q=80';
-        
-        $banner_slides[] = [
-            'image_path' => $pImg,
-            'title' => '🌟 Destaque do Dia: ' . $dailyProd['name'],
-            'subtitle' => 'Por apenas R$ ' . number_format($dailyProd['price'], 2, ',', '.') . ' em 3x sem juros com entrega rápida nos Jardins!',
-            'link_url' => 'product.php?id=' . $dailyProd['id']
-        ];
-    }
-}
-
-// Limit to 12 - 15 total items for optimal slider performance
-$banner_slides = array_slice($banner_slides, 0, 12);
+$baseUrl = defined('BASE_URL') ? BASE_URL : '';
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Helena Flores | Floricultura Online em São Paulo - Jardins</title>
-    <meta name="description" content="Buquês de Rosas Colombianas, Cestas Personalizadas e Arranjos de Luxo com entrega no mesmo dia em SP. (11) 98672-7872">
+    <title>Helena Flores | Floricultura & Cestas nos Jardins SP</title>
+    <meta name="description" content="Floricultura Helena Flores nos Jardins, SP. Envie Buquês de Rosas Colombianas, Cestas de Café da Manhã, Orquídeas e Kits Especiais com Entrega no Mesmo Dia!">
     <link rel="stylesheet" href="<?php echo $baseUrl; ?>/assets/css/helena_theme.css?v=<?php echo time(); ?>">
     <style>
-        .gf-section-header {
-            display: flex; justify-content: space-between; align-items: baseline;
-            border-bottom: 2px solid #F0F0F0; padding-bottom: 8px; margin-bottom: 20px; margin-top: 30px;
+        .gf-hero-slider {
+            position: relative; width: 100%; height: 380px; overflow: hidden; background: #FFF8F9;
         }
-        .gf-section-title {
-            font-size: 1.4rem; font-weight: 800; color: #222; text-transform: uppercase; letter-spacing: 0.5px;
+        .gf-slide {
+            position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; transition: opacity 0.8s ease-in-out;
+            background-size: cover; background-position: center; display: flex; align-items: center; justify-content: flex-start;
+            padding: 0 5%;
         }
-        .gf-section-sublinks {
-            display: flex; gap: 15px; font-size: 0.82rem;
+        .gf-slide.active { opacity: 1; z-index: 2; }
+        .gf-slide-card {
+            background: rgba(255, 255, 255, 0.95); padding: 2.2rem; border-radius: 20px; max-width: 520px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 1px solid rgba(216, 27, 96, 0.15); backdrop-filter: blur(5px);
         }
-        .gf-section-sublinks a { color: var(--gf-magenta); font-weight: 600; text-decoration: underline; }
-        
-        .gf-banner-grid-combo {
-            display: grid; grid-template-columns: 320px 1fr; gap: 20px; margin-bottom: 40px;
+        .gf-slide-card h2 {
+            font-size: 1.9rem; font-weight: 800; color: var(--gf-magenta-dark); margin-bottom: 8px; line-height: 1.25;
         }
-        .gf-side-banner {
-            background: linear-gradient(135deg, #C2185B 0%, #8B263E 100%);
-            border-radius: 14px; color: white; padding: 30px 20px; display: flex; flex-direction: column;
-            justify-content: space-between; text-align: center; box-shadow: 0 6px 20px rgba(194,24,91,0.25);
-            background-size: cover; background-position: center; position: relative; overflow: hidden;
-            min-height: 380px;
+        .gf-slide-card p {
+            font-size: 0.95rem; color: #444; margin-bottom: 18px; line-height: 1.5;
         }
-        .gf-side-banner-overlay {
-            position: absolute; inset: 0; background: rgba(139,38,62,0.75); z-index: 1;
+        .gf-slide-tag {
+            display: inline-block; background: var(--gf-magenta-light); color: var(--gf-magenta-dark); font-weight: 700;
+            font-size: 0.78rem; padding: 4px 12px; border-radius: 20px; margin-bottom: 10px; text-transform: uppercase;
         }
-        .gf-side-banner-content {
-            position: relative; z-index: 2; display: flex; flex-direction: column; height: 100%; justify-content: space-between;
-        }
-        @media (max-width: 900px) {
-            .gf-banner-grid-combo { grid-template-columns: 1fr !important; }
-            .gf-side-banner { min-height: 220px; }
+        @media (max-width: 768px) {
+            .gf-hero-slider { height: 300px; }
+            .gf-slide-card { padding: 1.2rem; max-width: 100%; }
+            .gf-slide-card h2 { font-size: 1.3rem; }
+            .gf-slide-card p { font-size: 0.85rem; margin-bottom: 12px; }
         }
     </style>
 </head>
@@ -270,7 +225,7 @@ $banner_slides = array_slice($banner_slides, 0, 12);
             <?php if (count($products) > 0): ?>
                 <?php foreach (array_slice($products, 0, 4) as $p): ?>
                     <?php 
-                    $img = $p['image_path'] ? (strpos($p['image_path'], 'http') === 0 ? $p['image_path'] : $baseUrl . '/assets/uploads/' . $p['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=600&q=80';
+                    $img = get_product_image_url($p['image_path'], $p['name']);
                     $oldPrice = $p['price'] * 1.20;
                     $installment = $p['price'] / 3;
                     ?>
@@ -408,7 +363,7 @@ $banner_slides = array_slice($banner_slides, 0, 12);
             <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:18px;">
                 <?php foreach (array_slice($products, 4, 6) as $p): ?>
                     <?php 
-                    $img = $p['image_path'] ? (strpos($p['image_path'], 'http') === 0 ? $p['image_path'] : $baseUrl . '/assets/uploads/' . $p['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=600&q=80';
+                    $img = get_product_image_url($p['image_path'], $p['name']);
                     $oldPrice = $p['price'] * 1.25;
                     $installment = $p['price'] / 3;
                     ?>
@@ -452,6 +407,57 @@ $banner_slides = array_slice($banner_slides, 0, 12);
                     </div>
                 <?php endforeach; ?>
             </div>
+        </div>
+
+        <!-- FULL PRODUCT CATALOG GRID -->
+        <div class="gf-section-header" style="margin-top:3rem;">
+            <h2 class="gf-section-title">🌹 TODOS OS PRODUTOS & PRESENTES</h2>
+        </div>
+        <div class="gf-product-grid">
+            <?php foreach (array_slice($products, 10) as $p): ?>
+                <?php 
+                $img = get_product_image_url($p['image_path'], $p['name']);
+                $oldPrice = $p['price'] * 1.15;
+                $installment = $p['price'] / 3;
+                ?>
+                <div class="gf-product-card">
+                    <a href="product.php?id=<?php echo $p['id']; ?>" class="gf-product-img">
+                        <img src="<?php echo $img; ?>" alt="<?php echo htmlspecialchars($p['name']); ?>" loading="lazy">
+                    </a>
+                    <div class="gf-product-body">
+                        <span class="gf-product-code">Cód: <?php echo htmlspecialchars($p['sku'] ?: $p['id']); ?></span>
+                        <a href="product.php?id=<?php echo $p['id']; ?>" class="gf-product-title" style="text-decoration:none;">
+                            <?php echo htmlspecialchars($p['name']); ?>
+                        </a>
+                        <div class="gf-product-desc">
+                            <?php echo htmlspecialchars(mb_strimwidth($p['description'] ?? '', 0, 75, '...')); ?>
+                        </div>
+
+                        <div class="gf-price-container">
+                            <div>
+                                <span class="gf-old-price">R$ <?php echo number_format($oldPrice, 2, ',', '.'); ?></span>
+                                <span class="gf-price-val">R$ <?php echo number_format($p['price'], 2, ',', '.'); ?></span>
+                            </div>
+                            <div style="font-size:0.75rem; color:#666; font-weight:600; margin-top:2px;">
+                                3x de <strong>R$ <?php echo number_format($installment, 2, ',', '.'); ?></strong> sem juros
+                            </div>
+                        </div>
+
+                        <div class="gf-card-actions">
+                            <form action="cart.php" method="POST" style="flex:1;">
+                                <input type="hidden" name="action" value="add">
+                                <input type="hidden" name="product_id" value="<?php echo $p['id']; ?>">
+                                <input type="hidden" name="qty" value="1">
+                                <button class="gf-btn-buy">Comprar 🛒</button>
+                            </form>
+                            <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20pedir%20o%20<?php echo urlencode($p['name']); ?>%20(R$%20<?php echo number_format($p['price'], 2, ',', '.'); ?>)" 
+                               target="_blank" class="gf-btn-wa-icon" title="Pedir no WhatsApp">
+                                💬
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
         </div>
 
     </div>
