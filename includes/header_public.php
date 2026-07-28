@@ -1,5 +1,5 @@
 <?php
-// includes/header_public.php — Helena Flores
+// includes/header_public.php — Helena Flores (Estilo Giuliana Flores)
 $is_logged = isset($_SESSION['user_id']);
 $user_display = [];
 
@@ -9,37 +9,71 @@ if ($is_logged) {
     $uData = $stmt->fetch();
     $user_display['name'] = explode(' ', trim($uData['name'] ?? 'Cliente'))[0];
 }
+
+$searchQuery = isset($_GET['q']) ? trim($_GET['q']) : '';
+$currentCat = isset($_GET['cat']) ? (int)$_GET['cat'] : 0;
+
+// Fetch categories for bar
+$allCats = [];
+try {
+    $allCats = $pdo->query("SELECT * FROM categories ORDER BY sort_order ASC, name ASC")->fetchAll();
+} catch (Exception $e) {}
 ?>
 <link rel="stylesheet" href="<?php echo BASE_URL; ?>/assets/css/helena_theme.css?v=<?php echo time(); ?>">
 
-<!-- Top Bar -->
-<div class="top-bar">
-    📍 Alameda Jaú, 1777, Jardim Paulista, SP | 📱 WhatsApp: <a href="https://wa.me/5511986727872" target="_blank">(11) 98672-7872</a>
+<!-- Giuliana Top Announcement Bar -->
+<div class="gf-top-announcement">
+    <span>🚚 Entrega no Mesmo Dia em São Paulo & Jardins</span>
+    <span>•</span>
+    <span>📱 WhatsApp: <a href="https://wa.me/5511986727872" target="_blank">(11) 98672-7872</a></span>
 </div>
 
-<header>
-    <div class="container nav-wrapper" style="display:flex; justify-content:space-between; align-items:center; padding:12px 0;">
-        <div class="logo">
-            <a href="<?php echo BASE_URL; ?>/" class="logo-text">
-                🌹 Helena <span>Flores</span>
-            </a>
-        </div>
-        <nav class="nav-links" style="display:flex; gap:12px; align-items:center;">
-            <a href="<?php echo BASE_URL; ?>/">🌸 FLORES & PRESENTES</a>
+<!-- Header Main Area -->
+<header class="gf-header">
+    <div class="gf-header-container">
+        <!-- Logo -->
+        <a href="<?php echo BASE_URL; ?>/" class="gf-logo">
+            🌹 Helena <span>Flores</span>
+        </a>
+
+        <!-- Search Bar -->
+        <form action="<?php echo BASE_URL; ?>/" method="GET" class="gf-search-form">
+            <input type="text" name="q" class="gf-search-input" 
+                   placeholder="O que você está procurando hoje? (ex: Rosas, Buquês, Cestas)..." 
+                   value="<?php echo htmlspecialchars($searchQuery); ?>">
+            <button type="submit" class="gf-search-btn" title="Buscar">🔍</button>
+        </form>
+
+        <!-- Right User Actions -->
+        <nav style="display:flex; gap:12px; align-items:center;">
             <?php if ($is_logged): ?>
-                <a href="<?php echo BASE_URL; ?>/my-orders.php">📦 MEUS PEDIDOS</a>
-                <a href="<?php echo BASE_URL; ?>/profile.php">👤 MINHA CONTA</a>
-                <a href="<?php echo BASE_URL; ?>/cart.php" class="btn-cart">🛒 CARRINHO</a>
-                <a href="<?php echo BASE_URL; ?>/logout.php" style="color:var(--hf-rose);">🚪 SAIR</a>
+                <a href="<?php echo BASE_URL; ?>/my-orders.php" style="color:#444; font-weight:600; text-decoration:none; font-size:0.88rem;">📦 Meus Pedidos</a>
+                <a href="<?php echo BASE_URL; ?>/cart.php" class="gf-btn-primary" style="padding:8px 18px; font-size:0.88rem;">🛒 Carrinho</a>
+                <a href="<?php echo BASE_URL; ?>/logout.php" style="color:var(--gf-magenta); font-weight:600; text-decoration:none; font-size:0.85rem;">Sair</a>
             <?php else: ?>
-                <a href="<?php echo BASE_URL; ?>/login.php">🔑 ENTRAR</a>
-                <a href="<?php echo BASE_URL; ?>/cart.php" class="btn-cart">🛒 CARRINHO</a>
+                <a href="<?php echo BASE_URL; ?>/login.php" style="color:#444; font-weight:600; text-decoration:none; font-size:0.88rem;">🔑 Entrar</a>
+                <a href="<?php echo BASE_URL; ?>/cart.php" class="gf-btn-primary" style="padding:8px 18px; font-size:0.88rem;">🛒 Carrinho</a>
             <?php endif; ?>
         </nav>
     </div>
 </header>
 
-<!-- Mobile Bottom Navigation Bar -->
+<!-- Giuliana Style Category Pills Bar -->
+<div class="gf-category-bar">
+    <div class="gf-category-scroll">
+        <a href="<?php echo BASE_URL; ?>/" class="gf-cat-pill <?php echo !$currentCat ? 'active' : ''; ?>">
+            🌹 Todas as Flores
+        </a>
+        <?php foreach ($allCats as $c): ?>
+            <a href="<?php echo BASE_URL; ?>/?cat=<?php echo $c['id']; ?>" 
+               class="gf-cat-pill <?php echo $currentCat == $c['id'] ? 'active' : ''; ?>">
+               🌸 <?php echo htmlspecialchars($c['name']); ?>
+            </a>
+        <?php endforeach; ?>
+    </div>
+</div>
+
+<!-- Mobile Bottom Bar -->
 <div class="mobile-bottom-nav">
     <a href="<?php echo BASE_URL; ?>/" class="bottom-nav-item active">
         <i>🌸</i>
