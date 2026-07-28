@@ -1,7 +1,7 @@
 <?php
 /**
  * seed_helena_flores.php — Semeador Completo dos 118 Produtos do WhatsApp Business Helena Flores
- * Mapeia automaticamente fotos locais baixadas da pasta assets/uploads/
+ * Mapeia automaticamente todas as imagens salvas na pasta assets/uploads/
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/db.php';
@@ -27,14 +27,14 @@ function detectCatName($title) {
     return 'Rosas Colombianas';
 }
 
-// Scans local assets/uploads/ for available original photos
+// Scans local assets/uploads/ for all available files
 $uploadDir = __DIR__ . '/assets/uploads/';
 $localFiles = [];
 if (file_exists($uploadDir)) {
     $files = scandir($uploadDir);
     foreach ($files as $f) {
-        if ($f !== '.' && $f !== '..' && is_file($uploadDir . $f) && preg_match('/\.(jpg|jpeg|png|webp)$/i', $f)) {
-            if ($f !== 'defects') {
+        if ($f !== '.' && $f !== '..' && is_file($uploadDir . $f) && !is_dir($uploadDir . $f)) {
+            if (preg_match('/\.(jpg|jpeg|png|webp)$/i', $f)) {
                 $localFiles[] = $f;
             }
         }
@@ -44,7 +44,7 @@ if (file_exists($uploadDir)) {
 function getBestLocalImage($title, $index, $localFiles) {
     if (empty($localFiles)) return 'rose_red.jpg';
 
-    // 1. Try finding a filename that matches product slug or title
+    // 1. Try finding a file matching the product title/slug
     $slug = makeSlug($title);
     foreach ($localFiles as $lf) {
         if (stripos($lf, $slug) !== false || stripos($lf, str_replace('-', '_', $slug)) !== false) {
@@ -65,8 +65,11 @@ function getBestLocalImage($title, $index, $localFiles) {
     if (preg_match('/tulipa/i', $title)) {
         foreach ($localFiles as $lf) { if (stripos($lf, 'tulipa') !== false) return $lf; }
     }
+    if (preg_match('/ferreiro|rocher|bombom/i', $title)) {
+        foreach ($localFiles as $lf) { if (stripos($lf, 'ferrero') !== false || stripos($lf, 'kit') !== false) return $lf; }
+    }
 
-    // 3. Fallback to rotating available local files in assets/uploads/
+    // 3. Fallback: rotate available files in assets/uploads/
     return $localFiles[$index % count($localFiles)];
 }
 
