@@ -1,138 +1,56 @@
 <?php
-// admin/login.php
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/db.php';
-session_start();
+require_once __DIR__ . '/../includes/notifications.php';
 
-// Debug helper
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
-$error = '';
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = $_POST['email'] ?? '';
-    $password = $_POST['password'] ?? '';
-
-    // 1. Check Database
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
-    $stmt->execute([$email]);
-    $user = $stmt->fetch();
-
-    $valid = false;
-
-    if ($user && in_array($user['role'], ['admin', 'manager', 'factory'])) {
-        // Try checks in order of likelihood
-
-        // A. Plain Text (Legacy/Emergency)
-        if ($user['password'] === $password) {
-            $valid = true;
-        }
-        // B. MD5 (Common legacy)
-        elseif (md5($password) === $user['password']) {
-            $valid = true;
-        }
-        // C. Bcrypt/Argon (Modern Security)
-        elseif (password_verify($password, $user['password'])) {
-            $valid = true;
-        }
-    }
-
-    if ($valid) {
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['user_name'] = $user['name'];
-        $_SESSION['user_role'] = $user['role'];
-        $_SESSION['admin_id'] = $user['id']; // Used by new POS/Stock modules
-        header("Location: dashboard.php");
-        exit;
-    } else {
-        $error = "Credenciais inválidas ou sem permissão.";
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
 }
+
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
+
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
 ?>
-<!DOCTYPE html>
-<html lang="pt-BR">
-
-<head>
-    <meta charset="UTF-8">
-    <title>Login Admin | Fight Arcade</title>
-    <style>
-        body {
-            background: #0f131a;
-            font-family: sans-serif;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-
-        .login-box {
-            background: #1a1f26;
-            padding: 2rem;
-            border-radius: 8px;
-            border: 1px solid #333;
-            width: 100%;
-            max-width: 350px;
-            text-align: center;
-            color: white;
-        }
-
-        input {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 10px;
-            background: #0f131a;
-            border: 1px solid #333;
-            color: white;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-
-        button {
-            width: 100%;
-            padding: 10px;
-            background: #FFC107;
-            color: black;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-
-        button:hover {
-            background: #e0a800;
-        }
-
-        .logo {
-            margin-bottom: 1.5rem;
-            font-size: 1.5rem;
-            color: #FFC107;
-            font-weight: bold;
-        }
-
-        .error {
-            color: #ff6b6b;
-            margin-bottom: 1rem;
-            font-size: 0.9rem;
-        }
-    </style>
-</head>
-
-<body>
-    <div class="login-box">
-        <div class="logo">ADMIN ACCESS</div>
-
-        <?php if ($error): ?>
-            <div class="error"><?php echo $error; ?></div>
-        <?php endif; ?>
-
-        <form method="POST">
-            <input type="email" name="email" placeholder="Email" required autofocus>
-            <input type="password" name="password" placeholder="Senha" required>
-            <button type="submit">ENTRAR</button>
-        </form>
-    </div>
-</body>
-
-</html>
