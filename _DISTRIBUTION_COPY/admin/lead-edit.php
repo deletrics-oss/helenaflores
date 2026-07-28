@@ -1,91 +1,56 @@
 <?php
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/user_auth.php';
-isAdmin();
+require_once __DIR__ . '/../includes/notifications.php';
 
-$id = $_GET['id'] ?? 0;
-$msg = '';
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = $_POST['name'];
-    $email = $_POST['email'];
-    $phone = $_POST['phone'];
-    $company = $_POST['company_name'];
-    $doc = $_POST['document'];
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
 
-    $stmt = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, company_name = ?, document = ? WHERE id = ?");
-    if ($stmt->execute([$name, $email, $phone, $company, $doc, $id])) {
-        $msg = '<div class="alert success">✅ Dados atualizados com sucesso!</div>';
-    } else {
-        $msg = '<div class="alert error">Erro ao atualizar.</div>';
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
 }
 
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$id]);
-$user = $stmt->fetch();
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
 
-if (!$user)
-    die("Usuário não encontrado.");
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
 ?>
-<!DOCTYPE html>
-<html lang="pt-BR">
-
-<head>
-    <meta charset="UTF-8">
-    <title>Editar Lead | Admin</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-</head>
-
-<body>
-    <?php include 'header.php'; ?>
-    <div class="container" style="padding-top:2rem; max-width:600px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-            <h1>✏️ Editar Lead</h1>
-            <a href="leads.php" class="btn btn-secondary">Voltar</a>
-        </div>
-
-        <?php echo $msg; ?>
-
-        <div class="card">
-            <form method="POST">
-                <div class="form-group" style="margin-bottom:1rem;">
-                    <label style="display:block; margin-bottom:5px;">Nome Completo</label>
-                    <input type="text" name="name" value="<?php echo htmlspecialchars($user['name']); ?>"
-                        style="width:100%; padding:10px; border-radius:5px; border:1px solid #444; background:#222; color:#fff;">
-                </div>
-
-                <div class="form-group" style="margin-bottom:1rem;">
-                    <label style="display:block; margin-bottom:5px;">Empresa</label>
-                    <input type="text" name="company_name"
-                        value="<?php echo htmlspecialchars($user['company_name']); ?>"
-                        style="width:100%; padding:10px; border-radius:5px; border:1px solid #444; background:#222; color:#fff;">
-                </div>
-
-                <div class="form-group" style="margin-bottom:1rem;">
-                    <label style="display:block; margin-bottom:5px;">E-mail</label>
-                    <input type="email" name="email" value="<?php echo htmlspecialchars($user['email']); ?>"
-                        style="width:100%; padding:10px; border-radius:5px; border:1px solid #444; background:#222; color:#fff;">
-                </div>
-
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
-                    <div class="form-group" style="margin-bottom:1rem;">
-                        <label style="display:block; margin-bottom:5px;">Telefone / WhatsApp</label>
-                        <input type="text" name="phone" value="<?php echo htmlspecialchars($user['phone']); ?>"
-                            style="width:100%; padding:10px; border-radius:5px; border:1px solid #444; background:#222; color:#fff;">
-                    </div>
-                    <div class="form-group" style="margin-bottom:1rem;">
-                        <label style="display:block; margin-bottom:5px;">CPF / CNPJ</label>
-                        <input type="text" name="document" value="<?php echo htmlspecialchars($user['document']); ?>"
-                            style="width:100%; padding:10px; border-radius:5px; border:1px solid #444; background:#222; color:#fff;">
-                    </div>
-                </div>
-
-                <button type="submit" class="btn" style="width:100%; margin-top:1rem;">💾 Salvar Alterações</button>
-            </form>
-        </div>
-    </div>
-</body>
-
-</html>
