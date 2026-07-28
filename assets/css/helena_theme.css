@@ -1,0 +1,266 @@
+/* Helena Flores — Luxury Floriculture Design System */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+
+:root {
+    --hf-primary: #C5A059;       /* Champagne Gold */
+    --hf-primary-hover: #A8823B;
+    --hf-primary-light: #F9F5EC;
+    --hf-rose: #8B263E;          /* Deep Velvet Rose */
+    --hf-rose-light: #FBF0F2;
+    --hf-green: #1B3B2B;         /* Botanical Emerald */
+    --bg-body: #FFFDFB;          /* Soft Cream Warm White */
+    --bg-card: #FFFFFF;
+    --text-main: #2C2C2C;
+    --text-muted: #6B6B6B;
+    --border-light: #EFECE6;
+    --shadow-soft: 0 10px 30px rgba(139, 38, 62, 0.05);
+    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.04);
+    --shadow-hover: 0 12px 35px rgba(197, 160, 89, 0.18);
+
+    --font-serif: 'Playfair Display', Georgia, serif;
+    --font-sans: 'Inter', -apple-system, sans-serif;
+}
+
+body {
+    background-color: var(--bg-body);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+h1, h2, h3, .hf-font-serif, .logo-text {
+    font-family: var(--font-serif);
+    letter-spacing: 0.2px;
+}
+
+/* Header Luxury Styling */
+header {
+    background: rgba(255, 253, 251, 0.96);
+    border-bottom: 1px solid var(--border-light);
+    backdrop-filter: blur(12px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.top-bar {
+    background: var(--hf-green);
+    color: #FFF;
+    font-size: 0.8rem;
+    padding: 6px 0;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+
+.top-bar a {
+    color: #E8C3C8;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.logo-text {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--hf-rose);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.logo-text span {
+    color: var(--hf-primary);
+    font-weight: 400;
+    font-style: italic;
+}
+
+/* Navigation Links */
+.nav-links a {
+    font-family: var(--font-sans);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-main);
+    padding: 8px 16px;
+    border-radius: 20px;
+    transition: all 0.3s ease;
+}
+
+.nav-links a:hover, .nav-links a.active {
+    color: var(--hf-rose);
+    background: var(--hf-rose-light);
+}
+
+.nav-links a.btn-cart {
+    background: var(--hf-primary);
+    color: #FFF !important;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(197, 160, 89, 0.3);
+}
+
+.nav-links a.btn-cart:hover {
+    background: var(--hf-primary-hover);
+    transform: translateY(-1px);
+}
+
+/* Product Cards */
+.products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1.8rem;
+    margin: 2rem 0;
+}
+
+.product-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    color: inherit;
+}
+
+.product-card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-hover);
+    border-color: var(--hf-primary);
+}
+
+.product-img {
+    height: 220px;
+    background: #FAFAFA;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.product-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+}
+
+.product-card:hover .product-img img {
+    transform: scale(1.06);
+}
+
+.product-info {
+    padding: 1.4rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.product-category {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--hf-primary);
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+}
+
+.product-title {
+    font-family: var(--font-serif);
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 8px;
+    line-height: 1.35;
+}
+
+.price-value {
+    font-family: var(--font-sans);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--hf-rose);
+}
+
+.btn-add-cart {
+    width: 100%;
+    padding: 12px;
+    background: var(--hf-rose);
+    color: #FFF;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-add-cart:hover {
+    background: #6D1B2F;
+}
+
+/* Floating WhatsApp Button */
+.whatsapp-float-helena {
+    position: fixed;
+    bottom: 25px;
+    right: 25px;
+    background: #25D366;
+    color: white;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    box-shadow: 0 6px 20px rgba(37, 211, 102, 0.4);
+    z-index: 1000;
+    transition: all 0.3s ease;
+    text-decoration: none;
+}
+
+.whatsapp-float-helena:hover {
+    transform: scale(1.1);
+}
+
+/* Footer Styling */
+footer.hf-footer {
+    background: var(--hf-green);
+    color: #EFECE6;
+    padding: 3rem 0 1.5rem 0;
+    margin-top: auto;
+    font-size: 0.9rem;
+}
+
+footer.hf-footer h4 {
+    font-family: var(--font-serif);
+    color: var(--hf-primary);
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+}
+
+footer.hf-footer a {
+    color: #EFECE6;
+    text-decoration: none;
+}
+
+footer.hf-footer a:hover {
+    color: var(--hf-primary);
+}
+
+.footer-bottom-copy {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 1.5rem;
+    margin-top: 2rem;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #A0B2A6;
+}
