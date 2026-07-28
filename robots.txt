@@ -1,0 +1,47 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /fabrica/
+Disallow: /includes/
+Disallow: /vendor/
+Disallow: /migrations/
+Disallow: /install/
+Disallow: *.json
+Disallow: *.sql
+Disallow: /migrate_*
+Disallow: /debug_*
+Disallow: /fix_*
+Disallow: /update_db*
+Disallow: /reparar_*
+Disallow: /emergency_*
+Disallow: /diagnostico*
+Disallow: /check_*
+Disallow: /dump_*
+Disallow: /scratch*
+Disallow: /setup_*
+Disallow: /test_*
+Disallow: /webhook_*
+Disallow: /api/
+Disallow: /cart.php
+Disallow: /checkout.php
+Disallow: /checkout_payment.php
+Disallow: /logout.php
+Disallow: /profile.php
+Disallow: /my-orders.php
+Disallow: /my-addresses.php
+
+# Google
+User-agent: Googlebot
+Allow: /
+Allow: /product.php
+Allow: /index.php
+Allow: /about.php
+Allow: /politica.php
+Crawl-delay: 1
+
+# Bing
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 2
+
+Sitemap: https://www.fightarcade.com.br/catalogo/sitemap.php
