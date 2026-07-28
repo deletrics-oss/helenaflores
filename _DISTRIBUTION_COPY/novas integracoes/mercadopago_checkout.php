@@ -1,68 +1,56 @@
 <?php
-require_once __DIR__ . 
-'/config.php';
-require_once __DIR__ . 
-'/includes/db.php';
-require_once __DIR__ . 
-'/vendor/autoload.php'; // Certifique-se de ter o SDK do Mercado Pago via Composer
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
 
-use MercadoPago\Client\Preference\PreferenceClient;
-use MercadoPago\MercadoPagoConfig;
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
-// Configurações do Mercado Pago
-MercadoPagoConfig::setAccessToken("YOUR_ACCESS_TOKEN"); // Substitua pelo seu Access Token
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
-function createMercadoPagoPreference($items, $payer_email, $order_id) {
-    $client = new PreferenceClient();
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
 
-    $preference = $client->create([
-        "items" => array_map(function($item) {
-            return [
-                "title" => $item["title"],
-                "quantity" => $item["quantity"],
-                "unit_price" => (float)$item["unit_price"],
-            ];
-        }, $items),
-        "payer" => [
-            "email" => $payer_email,
-        ],
-        "back_urls" => [
-            "success" => BASE_URL . "/success.php", // URL de sucesso após o pagamento
-            "failure" => BASE_URL . "/failure.php", // URL de falha no pagamento
-            "pending" => BASE_URL . "/pending.php", // URL de pagamento pendente
-        ],
-        "auto_return" => "approved",
-        "external_reference" => $order_id, // Referência externa para o seu pedido
-        "notification_url" => BASE_URL . "/mercadopago_webhook.php", // URL para notificações de status
-    ]);
-
-    return $preference;
-}
-
-// Exemplo de uso (você integraria isso no seu fluxo de checkout)
-if (isset($_GET["action"]) && $_GET["action"] === "checkout_mp") {
-    // Simular itens do carrinho
-    $cart_items = [
-        ["title" => "Produto A", "quantity" => 1, "unit_price" => 100.00],
-        ["title" => "Produto B", "quantity" => 2, "unit_price" => 50.00],
-    ];
-    $user_email = "test@example.com"; // Email do usuário logado
-    $current_order_id = "ORDER_" . uniqid(); // Gerar um ID de pedido único
-
-    try {
-        $preference = createMercadoPagoPreference($cart_items, $user_email, $current_order_id);
-        // Redirecionar o usuário para o Checkout Pro do Mercado Pago
-        header("Location: " . $preference->init_point);
-        exit();
-    } catch (Exception $e) {
-        echo "Erro ao criar preferência de pagamento: " . $e->getMessage();
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
 }
 
-// Webhook para receber notificações do Mercado Pago
-// Crie um arquivo mercadopago_webhook.php para lidar com isso
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
 
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
 ?>
-
-<!-- Exemplo de botão de checkout no seu HTML -->
-<a href="?action=checkout_mp" class="btn">Pagar com Mercado Pago</a>
