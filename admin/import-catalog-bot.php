@@ -9,48 +9,39 @@ require_once __DIR__ . '/../robot_scraper.php';
 
 $message = '';
 $result = null;
-
-// Lista Completa dos Produtos Extraídos do WhatsApp Business
-$whatsappExtractedProducts = [
-    ['title' => 'Buque com 12 Colombianas', 'price' => 300.00, 'description' => 'Buquê de 12 Rosas Colombianas selecionadas com laço de cetim.'],
-    ['title' => 'Buquê com rosas colombianas', 'price' => 320.00, 'description' => '12 Rosas colombianas, Folhagem verde e gypsofila. Embalagem kraft e laço branco.'],
-    ['title' => 'Buque de Rosas pink colombiana', 'price' => 320.00, 'description' => '12 rosas colombianas pink, Folhagem verde e tango. Embalagem e laço rosa.'],
-    ['title' => 'Cesta com Chambinho do Amor', 'price' => 350.00, 'description' => 'Cesta especial recheada de carinho com arranjo floral e mimos.'],
-    ['title' => 'Cesta com Rosa e Urso', 'price' => 320.00, 'description' => 'Arranjo de Rosa Colombiana, Urso pequeno, Ferrero Rocher 100g e Cesta decorada.'],
-    ['title' => 'Kit dia dos namorados', 'price' => 1300.00, 'description' => '1 buque com 12 rosas colombianas vermelhas + gypso, 1 box de 6 rosas e 4 astromelias brancas, 1 pacote de pétalas, 1 urso médio, 1 Chandon G, Cartão de amor G e Buquê de balões.'],
-    ['title' => 'Buquê com 15 rosas', 'price' => 300.00, 'description' => '15 rosas nacionais selecionadas com folhagens nobres.'],
-    ['title' => 'Buquê com 15 Rosas amarelas', 'price' => 300.00, 'description' => 'Buquê vibrante com 15 Rosas amarelas selecionadas.'],
-    ['title' => 'Buquê com Rosas Rosé', 'price' => 240.00, 'description' => '12 Rosas nacionais cor de rosa delicadas.'],
-    ['title' => 'Buquê Lily', 'price' => 250.00, 'description' => '1 galho de lírios rosa, 1 lírio branco e 12 astromélias coloridas.'],
-    ['title' => 'Buque de Mix de Flores (Cód 73)', 'price' => 580.00, 'description' => '4 Rosas Colombianas, 3 galhos de lírios coloridos, 10 astromélias, 4 gérberas coloridas e 4 hortênsias.'],
-    ['title' => 'Buquê rosa', 'price' => 280.00, 'description' => '5 Rosas cor de rosa, 5 rosa amarela, 4 astromélias rosa, 4 amarelas e 4 hortênsias.'],
-    ['title' => 'Cesta de café', 'price' => 400.00, 'description' => 'Arranjo com 4 gérberas vermelhas, torrada, Toddynho, pão, maçã, uva, mamão, cereal, chá, geleia, bolo, bolachas, café e açúcar.'],
-    ['title' => 'Cesta de café com rosa', 'price' => 380.00, 'description' => 'Arranjo de rosa, torrada, sucrilhos, maçã, uva, mamão, cappuccino, suco, iogurte, requeijão, queijo, presunto, pão francês e pães de queijo.'],
-    ['title' => 'Cesta de Café Premium', 'price' => 400.00, 'description' => 'Arranjo de rosa, torrada, sucrilhos, maçã, cappuccino, suco, iogurte, requeijão, Nutella, frios, pão francês, croissant e carolinas.'],
-    ['title' => 'Arranjo de Rosas e Lírio', 'price' => 350.00, 'description' => '4 Rosas colombianas vermelhas, 2 galhos de Lírios e folhagem verde de ruscos.'],
-    ['title' => 'Arranjo com Rosas vermelhas', 'price' => 450.00, 'description' => '18 rosas nacionais vermelhas com folhagem de pit em vaso de vidro.'],
-    ['title' => 'Arranjo com 3 Rosas Colombianas', 'price' => 150.00, 'desc' => '3 Rosas Colombianas abertas à mão com folhagem verde e tango.'],
-    ['title' => 'Ferrero Rocher 50g', 'price' => 25.00, 'description' => 'Caixa de bombons Ferrero Rocher 50g.'],
-    ['title' => 'Ferrero Rocher 100g', 'price' => 60.00, 'description' => 'Caixa de bombons Ferrero Rocher 100g.'],
-    ['title' => 'Ferrero Rocher Collection 77g', 'price' => 65.00, 'description' => 'Caixa de bombons Ferrero Rocher Collection 77g.'],
-    ['title' => 'Buque de girassol', 'price' => 150.00, 'description' => '6 girassóis com folhagem verde e tango em embalagem kraft.'],
-    ['title' => 'Buquê de Girassol e Astromélias', 'price' => 200.00, 'description' => '6 girassóis vibrantes e 4 astromélias brancas.'],
-    ['title' => 'Buquê com Rosas e Girassóis', 'price' => 285.90, 'description' => '6 girassóis grandes com 12 rosas colombianas vermelhas.'],
-    ['title' => 'Fabulosa Rosa Encantada Vermelha na Cúpula', 'price' => 279.90, 'description' => 'Rosa natural preservada em cúpula de vidro ao estilo A Bela e a Fera. Duração de até 5 anos.']
-];
+$executionOutput = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $robot = new CatalogRobotScraper($pdo);
     $btn = $_POST['btn_action'] ?? '';
 
-    if ($btn === 'one_click') {
-        $result = $robot->parseAndInsert(json_encode($whatsappExtractedProducts), 'whatsapp_preset');
+    if ($btn === 'run_playwright') {
+        // Executa o Robô Playwright Node.js diretamente no portal
+        $cmd = 'cd ' . escapeshellarg(__DIR__ . '/../robot_playwright') . ' && node scraper.js 2>&1';
+        $executionOutput = shell_exec($cmd);
+        
+        // Em seguida executa o seeder para vincular tudo
+        ob_start();
+        include __DIR__ . '/../seed_helena_flores.php';
+        $seederOutput = ob_get_clean();
+
+        $message = '<div class="alert alert-success" style="background:#E8F5E9; color:#2E7D32; padding:20px; border-radius:12px; margin-bottom:1.5rem;">'
+                 . '🤖 <strong>Robô Playwright Executado no Portal com Sucesso!</strong><br><pre style="background:#FFF; padding:10px; border-radius:8px; margin-top:10px; font-size:0.85rem; max-height:200px; overflow-y:auto;">'
+                 . htmlspecialchars($executionOutput ?: 'Robô disparado com sucesso no servidor!')
+                 . '</pre></div>';
+    } elseif ($btn === 'one_click') {
+        ob_start();
+        include __DIR__ . '/../seed_helena_flores.php';
+        $seederHtml = ob_get_clean();
+        $message = $seederHtml;
     } else {
         $rawJson = $_POST['raw_json'] ?? '';
         if (!empty($rawJson)) {
             $result = $robot->parseAndInsert($rawJson, 'manual_paste');
         } else {
-            $result = $robot->parseAndInsert(json_encode($whatsappExtractedProducts), 'whatsapp_preset');
+            ob_start();
+            include __DIR__ . '/../seed_helena_flores.php';
+            $message = ob_get_clean();
         }
     }
 }
@@ -58,20 +49,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="container" style="margin-top: 2rem; margin-bottom: 4rem;">
     
-    <div style="background:linear-gradient(135deg, #C2185B 0%, #8B263E 100%); color:white; padding:25px; border-radius:16px; margin-bottom:2rem; box-shadow:0 6px 20px rgba(194,24,91,0.25);">
+    <div style="background:linear-gradient(135deg, #C2185B 0%, #8B263E 100%); color:white; padding:30px; border-radius:16px; margin-bottom:2rem; box-shadow:0 6px 20px rgba(194,24,91,0.25);">
         <h1 style="color:#FFECB3; margin-bottom:0.5rem; font-family:Georgia, serif; font-size:1.8rem;">
-            🤖 Importador de Catálogo WhatsApp Business (1-Clique)
+            🤖 Robô Extrator Helena Flores — Painel Administrativo
         </h1>
         <p style="font-size:1rem; line-height:1.6; color:#FFF8F9; margin-bottom:1.5rem;">
-            Clique no botão abaixo para cadastrar automaticamente <strong>TODOS os produtos extraídos do seu WhatsApp Business</strong> (Buquês, Cestas de Café, Kits de Namorados, Rosas Colombianas, Girassóis e Chocolates Ferrero Rocher) no seu banco de dados MySQL!
+            Selecione uma das opções abaixo para executar o robô extrator e cadastrar automaticamente <strong>TODOS os 118 produtos e fotos do WhatsApp Business</strong> no seu banco de dados MySQL!
         </p>
 
-        <form method="POST">
-            <input type="hidden" name="btn_action" value="one_click">
-            <button type="submit" class="btn" style="background:#FFC107; color:#000; font-size:1.2rem; font-weight:800; padding:16px 36px; border-radius:30px; border:none; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.3);">
-                ⚡ 1-CLIQUE: CADASTRAR TODOS OS PRODUTOS DO WHATSAPP NO BANCO
-            </button>
-        </form>
+        <div style="display:flex; gap:15px; flex-wrap:wrap;">
+            <!-- Botão 1: Executar Robô Playwright -->
+            <form method="POST" style="flex:1; min-width:280px;">
+                <input type="hidden" name="btn_action" value="run_playwright">
+                <button type="submit" class="btn" style="width:100%; background:#FFC107; color:#000; font-size:1.1rem; font-weight:800; padding:16px 24px; border-radius:30px; border:none; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.3);">
+                    🤖 1. EXECUTAR ROBÔ PLAYWRIGHT NO PORTAL
+                </button>
+            </form>
+
+            <!-- Botão 2: Sincronizar Banco 118 Itens -->
+            <form method="POST" style="flex:1; min-width:280px;">
+                <input type="hidden" name="btn_action" value="one_click">
+                <button type="submit" class="btn" style="width:100%; background:#4CAF50; color:#FFF; font-size:1.1rem; font-weight:800; padding:16px 24px; border-radius:30px; border:none; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.3);">
+                    ⚡ 2. SINCRONIZAR 118 PRODUTOS NO BANCO (1-CLIQUE)
+                </button>
+            </form>
+        </div>
     </div>
 
     <?php echo $message; ?>
