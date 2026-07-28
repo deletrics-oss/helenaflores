@@ -1,60 +1,56 @@
 <?php
 /**
- * Atualização do Banco para Mapeamento de Categorias Marketplace
- * 
- * Cria tabela para mapear categorias internas -> IDs do Mercado Livre e Shopee
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
  */
-require_once 'includes/db.php';
 
-echo "<h1>🔧 Criando Tabela de Mapeamento de Categorias...</h1>";
-echo "<pre>";
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
-// Cria tabela de mapeamento
-$sql = "CREATE TABLE IF NOT EXISTS marketplace_categories (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    category_id INT NOT NULL COMMENT 'ID da categoria interna',
-    marketplace VARCHAR(50) NOT NULL COMMENT 'shopee ou mercadolivre',
-    marketplace_category_id VARCHAR(50) NOT NULL COMMENT 'ID da categoria no marketplace',
-    marketplace_category_name VARCHAR(255) NULL COMMENT 'Nome para referência',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_mapping (category_id, marketplace),
-    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
-try {
-    $pdo->exec($sql);
-    echo "✅ Tabela marketplace_categories criada!\n";
-} catch (PDOException $e) {
-    if (strpos($e->getMessage(), 'already exists') !== false) {
-        echo "⏭️ Tabela já existe.\n";
-    } else {
-        echo "❌ Erro: " . $e->getMessage() . "\n";
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
+
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
 }
 
-// Insere alguns mapeamentos de exemplo baseados nas categorias existentes
-$categorias = $pdo->query("SELECT id, name FROM categories")->fetchAll(PDO::FETCH_ASSOC);
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
 
-echo "\n📋 Categorias encontradas:\n";
-foreach ($categorias as $cat) {
-    echo "  - [{$cat['id']}] {$cat['name']}\n";
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
 }
 
-// Exemplos de IDs do Mercado Livre (você pode ajustar)
-// Esses IDs são fictícios - você precisa pegar os reais na Central do ML
-$exemplos = [
-    'Botões' => ['ml' => 'MLB1039', 'shopee' => '100636'],
-    'Placas & Interfaces' => ['ml' => 'MLB1648', 'shopee' => '100636'],
-    'Joysticks' => ['ml' => 'MLB1039', 'shopee' => '100636'],
-    'Cabos' => ['ml' => 'MLB1039', 'shopee' => '100636'],
-    'Outros' => ['ml' => 'MLB1039', 'shopee' => '100636'],
-];
-
-echo "\n💡 Para adicionar mapeamentos, acesse: admin/marketplace_categories.php\n";
-
-echo "</pre>";
-echo "<h2>✅ Concluído!</h2>";
-echo "<p><a href='admin/marketplace_categories.php'>📂 Gerenciar Categorias Marketplace</a></p>";
-echo "<p><a href='admin/products.php'>👉 Ir para Produtos</a></p>";
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
 ?>
