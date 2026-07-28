@@ -1,74 +1,56 @@
-﻿<!DOCTYPE html>
-<html><head>
-   <title>imageUSB by PassMark® Software</title>
-   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<?php
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
 
-   <!-- This line includes the general project style sheet (not required) -->
-   <link type="text/css" href="default.css" rel="stylesheet" />
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
-   <!-- You can change the fonts, text colors, and styles of your search results with the CSS below -->
-   <style type="text/css">
-        body { background:#FFF; }
-        .navbar { font-size: 120%; }
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
-        .submit { font-size: 9pt; }
-        .highlight { background: #FFFF40; }
-        .searchheading { font-size: 9pt; font-weight: bold; }
-        .summary { font-size: 8pt; font-style: italic; }
-        .results { font-size: 9pt; }
-        .description { font-size: 9pt; }
-        .context { font-size: 9pt; }
-        .result_title { font-size: 9pt; }
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
 
-	       .suggestion { font-size: 100%; }
-	       .category { color: #999999; }
-	       .sorting { text-align: right; }
-	       .zoom_searchform { font-size: 100%; }
-	       .zoom_results_per_page { font-size: 80%; margin-left: 10px; }
-	       .zoom_match { font-size: 80%; margin-left: 10px;}
-	       .zoom_categories { font-size: 80%; }
-	       .zoom_categories ul { display: inline; margin: 0px; padding: 0px;}
-	       .zoom_categories li { display: inline; margin-left: 15px; list-style-type: none; }
-	       input.zoom_button {  }
-	       input.zoom_searchbox {  }
-	       .result_image { float: left; display: block; }
-	       .result_image img { margin: 10px; width: 80px; border: 0px; }
-	       .result_block { margin-top: 15px; margin-bottom: 15px; clear: left; }
-	       .result_altblock { margin-top: 15px; margin-bottom: 15px; clear: left; }
-	       .result_pages { font-size: 100%; }
-	       .result_pagescount { font-size: 100%; }
-	       .searchtime { font-size: 80%; }
-	       .recommended
-	       {
-		        background: #DFFFBF;
-	       		border-top: 1px dotted #808080;
-	       		border-bottom: 1px dotted #808080;
-	       		margin-top: 15px;
-	       		margin-bottom: 15px;
-	       }
-	       .recommended_heading { float: right; font-weight: bold; }
-	       .recommend_block { margin-top: 15px; margin-bottom: 15px; clear: left; }
-	       .recommend_title { font-size: 100%; }
-	       .recommend_description { font-size: 100%; color: #008000; }
-	       .recommend_infoline { font-size: 80%; font-style: normal; color: #808080;}
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
+    }
+}
 
- 	</style>
-</head>
-<body>
-<p class="navbar"><a href="hmcontent.htm">Contents</a>
- | <a href="hmkwindex.htm">Index</a>
- | <b>Search</b>
-</p>
-<hr/>
-<p class="submit">Enter one or more keywords to search ('*' and '?' wildcards are supported):</p>
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
 
-  <!-- This is where the search form and results will appear -->
-  <!--ZOOMSEARCH-->
+$notif = new NotificationService($pdo);
 
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
 
-<noscript>
-<p>You must have JavaScript enabled to use this version of the search engine.</p>
-</noscript>
-</body>
-</html>
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
+?>
