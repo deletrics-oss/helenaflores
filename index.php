@@ -7,6 +7,7 @@ require_once __DIR__ . '/includes/db.php';
 ob_start();
 
 $is_logged_in = isset($_SESSION['user_id']);
+$baseUrl = defined('BASE_URL') ? BASE_URL : '';
 
 // Filter Logic
 $cat_id = isset($_GET['cat']) ? (int) $_GET['cat'] : 0;
@@ -40,25 +41,23 @@ try {
 } catch (Exception $e) {}
 
 if (empty($banner_slides)) {
-    $localBannerFiles = glob(__DIR__ . '/assets/banners/*.{jpg,jpeg,png,webp}', GLOB_BRACE);
-    if (!empty($localBannerFiles)) {
-        foreach ($localBannerFiles as $idx => $file) {
-            $banner_slides[] = [
-                'image_path' => 'assets/banners/' . basename($file),
-                'title' => 'Helena Flores — Floricultura nos Jardins',
-                'subtitle' => 'Buquês de Rosas Colombianas, Cestas e Arranjos de Luxo em SP',
-                'link_url' => '#produtos'
-            ];
-        }
-    }
-}
-
-if (empty($banner_slides)) {
     $banner_slides = [
         [
             'image_path' => 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=1600&q=80',
             'title' => 'Rosas Colombianas Selecionadas',
-            'subtitle' => 'Há mais de 11 anos entregando emoções e carinho em São Paulo.',
+            'subtitle' => 'Há mais de 11 anos cultivando emoções e carinho nos Jardins em São Paulo.',
+            'link_url' => '#produtos'
+        ],
+        [
+            'image_path' => 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=1600&q=80',
+            'title' => 'Cestas de Café & Presentes de Luxo',
+            'subtitle' => 'Entregas expressas no mesmo dia para surpreender quem você ama.',
+            'link_url' => '#produtos'
+        ],
+        [
+            'image_path' => 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=1600&q=80',
+            'title' => 'Arranjos e Buquês Exclusivos',
+            'subtitle' => 'Flores frescas colhidas diariamente com garantia de durabilidade.',
             'link_url' => '#produtos'
         ]
     ];
@@ -71,7 +70,7 @@ if (empty($banner_slides)) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Helena Flores | Floricultura Online em São Paulo - Jardins</title>
     <meta name="description" content="Buquês de Rosas Colombianas, Cestas Personalizadas e Arranjos de Luxo com entrega no mesmo dia em SP. (11) 98672-7872">
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>/assets/css/helena_theme.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo $baseUrl; ?>/assets/css/helena_theme.css?v=<?php echo time(); ?>">
     <style>
         .gf-section-header {
             display: flex; justify-content: space-between; align-items: baseline;
@@ -93,6 +92,7 @@ if (empty($banner_slides)) {
             border-radius: 14px; color: white; padding: 30px 20px; display: flex; flex-direction: column;
             justify-content: space-between; text-align: center; box-shadow: 0 6px 20px rgba(194,24,91,0.25);
             background-size: cover; background-position: center; position: relative; overflow: hidden;
+            min-height: 380px;
         }
         .gf-side-banner-overlay {
             position: absolute; inset: 0; background: rgba(139,38,62,0.75); z-index: 1;
@@ -115,14 +115,14 @@ if (empty($banner_slides)) {
         <?php foreach ($banner_slides as $index => $slide):
             $img = $slide['image_path'] ?? $slide['image'];
             if (strpos($img, 'http') === false) {
-                $img = BASE_URL . '/' . ltrim($img, '/');
+                $img = $baseUrl . '/' . ltrim($img, '/');
             }
             $ttl = $slide['title'] ?? 'Helena Flores';
             $sub = $slide['subtitle'] ?? 'Atelier & Floricultura nos Jardins';
             $lnk = $slide['link_url'] ?? '#produtos';
             ?>
             <div class="gf-slide <?php echo $index === 0 ? 'active' : ''; ?>"
-                 style="background-image: linear-gradient(90deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.2) 100%), url('<?php echo $img; ?>');">
+                 style="background-image: linear-gradient(90deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.3) 100%), url('<?php echo $img; ?>');">
                 <div class="gf-slide-card">
                     <span class="gf-slide-tag">🌹 Entregas no Mesmo Dia em Jardins & SP</span>
                     <h2><?php echo htmlspecialchars($ttl); ?></h2>
@@ -131,7 +131,7 @@ if (empty($banner_slides)) {
                         <a href="<?php echo $lnk; ?>" class="gf-btn-primary">
                             🌸 Ver Ofertas de Hoje
                         </a>
-                        <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20fazer%20um%20pedido" 
+                        <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20fazer%20um%20pedido%20pelo%20WhatsApp" 
                            target="_blank" 
                            class="gf-btn-whatsapp">
                             💬 Pedir via WhatsApp
@@ -157,6 +157,52 @@ if (empty($banner_slides)) {
     <!-- Main Content Container -->
     <div style="max-width:1240px; margin: 2rem auto; padding: 0 20px; flex:1;" id="produtos">
 
+        <!-- GIULIANA STYLE CIRCULAR CATEGORIES (STORY CIRCLES) -->
+        <div class="gf-circles-container">
+            <a href="?cat=1" class="gf-circle-item">
+                <div class="gf-circle-img">
+                    <img src="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=300&q=80" alt="Rosas Encantadas">
+                </div>
+                <span class="gf-circle-label">Rosas Encantadas</span>
+            </a>
+            <a href="?cat=3" class="gf-circle-item">
+                <div class="gf-circle-img">
+                    <img src="https://images.unsplash.com/photo-1591886960571-74d43a9d4166?w=300&q=80" alt="Girassol">
+                </div>
+                <span class="gf-circle-label">Girassóis</span>
+            </a>
+            <a href="?cat=4" class="gf-circle-item">
+                <div class="gf-circle-img">
+                    <img src="https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=300&q=80" alt="Arranjos">
+                </div>
+                <span class="gf-circle-label">Arranjos</span>
+            </a>
+            <a href="?cat=3" class="gf-circle-item">
+                <div class="gf-circle-img">
+                    <img src="https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=300&q=80" alt="Buquês de Rosas">
+                </div>
+                <span class="gf-circle-label">Buquês de Rosas</span>
+            </a>
+            <a href="?cat=5" class="gf-circle-item">
+                <div class="gf-circle-img">
+                    <img src="https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=300&q=80" alt="Aniversário">
+                </div>
+                <span class="gf-circle-label">Aniversário</span>
+            </a>
+            <a href="?cat=2" class="gf-circle-item">
+                <div class="gf-circle-img">
+                    <img src="https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=300&q=80" alt="Cestas">
+                </div>
+                <span class="gf-circle-label">Cestas</span>
+            </a>
+            <a href="?cat=6" class="gf-circle-item">
+                <div class="gf-circle-img">
+                    <img src="https://images.unsplash.com/photo-1563241527-3004b7be0ffd?w=300&q=80" alt="Orquídeas">
+                </div>
+                <span class="gf-circle-label">Orquídeas</span>
+            </a>
+        </div>
+
         <!-- SECTION 1: OS MAIS VENDIDOS -->
         <div class="gf-section-header">
             <h2 class="gf-section-title">🔥 OS MAIS VENDIDOS</h2>
@@ -171,7 +217,7 @@ if (empty($banner_slides)) {
             <?php if (count($products) > 0): ?>
                 <?php foreach (array_slice($products, 0, 4) as $p): ?>
                     <?php 
-                    $img = $p['image_path'] ? (strpos($p['image_path'], 'http') === 0 ? $p['image_path'] : BASE_URL . '/assets/uploads/' . $p['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=600&q=80';
+                    $img = $p['image_path'] ? (strpos($p['image_path'], 'http') === 0 ? $p['image_path'] : $baseUrl . '/assets/uploads/' . $p['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=600&q=80';
                     $oldPrice = $p['price'] * 1.20;
                     $installment = $p['price'] / 3;
                     ?>
@@ -217,6 +263,66 @@ if (empty($banner_slides)) {
             <?php endif; ?>
         </div>
 
+        <!-- WHATSAPP ORDER PROMO STRIP BANNER -->
+        <div class="gf-promo-banner-strip">
+            <div>
+                <span style="background:rgba(255,255,255,0.25); padding:4px 12px; border-radius:15px; font-weight:700; font-size:0.8rem;">
+                    💬 ATENDIMENTO PERSONALIZADO
+                </span>
+                <h3 style="margin-top:8px;">Faça seu pedido diretamente pelo WhatsApp Business!</h3>
+                <p>Nossa equipe nos Jardins monta o seu buquê ou cesta em tempo real com envio imediato.</p>
+            </div>
+            <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20fazer%20um%20pedido%20personalizado" 
+               target="_blank" 
+               class="gf-btn-whatsapp" 
+               style="font-size:1.1rem; padding:14px 30px; box-shadow:0 4px 15px rgba(0,0,0,0.2);">
+                💬 Chamar no WhatsApp (11) 98672-7872
+            </a>
+        </div>
+
+        <!-- TIPOS DE FLORES PASTEL TILES (GIULIANA STYLE) -->
+        <div class="gf-section-header">
+            <h2 class="gf-section-title">🌸 TIPOS DE FLORES</h2>
+        </div>
+        <div class="gf-flower-types-grid">
+            <a href="?q=rosas" class="gf-flower-tile" style="background:#FFEEDD;">
+                <span class="tile-title">Rosas</span>
+                <span style="font-size:2rem;">🌹</span>
+            </a>
+            <a href="?q=margaridas" class="gf-flower-tile" style="background:#E0F7FA;">
+                <span class="tile-title">Margaridas</span>
+                <span style="font-size:2rem;">🌼</span>
+            </a>
+            <a href="?q=orquídeas" class="gf-flower-tile" style="background:#F3E5F5;">
+                <span class="tile-title">Orquídeas</span>
+                <span style="font-size:2rem;">🪻</span>
+            </a>
+            <a href="?q=secas" class="gf-flower-tile" style="background:#EDE7F6;">
+                <span class="tile-title">Flores Secas</span>
+                <span style="font-size:2rem;">🌾</span>
+            </a>
+            <a href="?q=plantas" class="gf-flower-tile" style="background:#E8F5E9;">
+                <span class="tile-title">Plantas</span>
+                <span style="font-size:2rem;">🪴</span>
+            </a>
+            <a href="?q=campo" class="gf-flower-tile" style="background:#FCE4EC;">
+                <span class="tile-title">Flores do Campo</span>
+                <span style="font-size:2rem;">💐</span>
+            </a>
+            <a href="?q=lírios" class="gf-flower-tile" style="background:#FFF3E0;">
+                <span class="tile-title">Lírios</span>
+                <span style="font-size:2rem;">🌺</span>
+            </a>
+            <a href="?q=astromélias" class="gf-flower-tile" style="background:#FFEBEE;">
+                <span class="tile-title">Astromélias</span>
+                <span style="font-size:2rem;">🌸</span>
+            </a>
+            <a href="?q=girassóis" class="gf-flower-tile" style="background:#FFFDE7;">
+                <span class="tile-title">Girassóis</span>
+                <span style="font-size:2rem;">🌻</span>
+            </a>
+        </div>
+
         <!-- SECTION 2: COMBO PROMO BANNER + PRODUCTS (GIULIANA STYLE) -->
         <div class="gf-section-header">
             <h2 class="gf-section-title">💐 BUQUÊS DE FLORES E ARRANJOS EXCLUSIVOS</h2>
@@ -247,9 +353,9 @@ if (empty($banner_slides)) {
 
             <!-- 3 Products Grid Next to Banner -->
             <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:18px;">
-                <?php foreach (array_slice($products, 3, 3) as $p): ?>
+                <?php foreach (array_slice($products, 4, 6) as $p): ?>
                     <?php 
-                    $img = $p['image_path'] ? (strpos($p['image_path'], 'http') === 0 ? $p['image_path'] : BASE_URL . '/assets/uploads/' . $p['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=600&q=80';
+                    $img = $p['image_path'] ? (strpos($p['image_path'], 'http') === 0 ? $p['image_path'] : $baseUrl . '/assets/uploads/' . $p['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=600&q=80';
                     $oldPrice = $p['price'] * 1.25;
                     $installment = $p['price'] / 3;
                     ?>
@@ -284,54 +390,16 @@ if (empty($banner_slides)) {
                                     <input type="hidden" name="qty" value="1">
                                     <button class="gf-btn-buy">Comprar 🛒</button>
                                 </form>
+                                <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20pedir%20o%20<?php echo urlencode($p['name']); ?>%20(R$%20<?php echo number_format($p['price'], 2, ',', '.'); ?>)" 
+                                   target="_blank" class="gf-btn-wa-icon" title="Pedir no WhatsApp">
+                                    💬
+                                </a>
                             </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
             </div>
         </div>
-
-        <!-- FULL LIST IF FILTERED -->
-        <?php if ($cat_id || $search): ?>
-            <div class="gf-section-header">
-                <h2 class="gf-section-title">RESULTADOS DA BUSCA</h2>
-            </div>
-            <div class="gf-product-grid">
-                <?php foreach ($products as $p): ?>
-                    <?php 
-                    $img = $p['image_path'] ? (strpos($p['image_path'], 'http') === 0 ? $p['image_path'] : BASE_URL . '/assets/uploads/' . $p['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=600&q=80';
-                    $installment = $p['price'] / 3;
-                    ?>
-                    <div class="gf-product-card">
-                        <a href="product.php?id=<?php echo $p['id']; ?>" class="gf-product-img">
-                            <img src="<?php echo $img; ?>" alt="<?php echo htmlspecialchars($p['name']); ?>" loading="lazy">
-                        </a>
-                        <div class="gf-product-body">
-                            <span class="gf-product-code">Cód: <?php echo htmlspecialchars($p['sku'] ?: $p['id']); ?></span>
-                            <a href="product.php?id=<?php echo $p['id']; ?>" class="gf-product-title" style="text-decoration:none;">
-                                <?php echo htmlspecialchars($p['name']); ?>
-                            </a>
-                            <div class="gf-price-container">
-                                <div>
-                                    <span class="gf-price-val">R$ <?php echo number_format($p['price'], 2, ',', '.'); ?></span>
-                                </div>
-                                <div style="font-size:0.75rem; color:#666; font-weight:600; margin-top:2px;">
-                                    3x de <strong>R$ <?php echo number_format($installment, 2, ',', '.'); ?></strong> sem juros
-                                </div>
-                            </div>
-                            <div class="gf-card-actions">
-                                <form action="cart.php" method="POST" style="flex:1;">
-                                    <input type="hidden" name="action" value="add">
-                                    <input type="hidden" name="product_id" value="<?php echo $p['id']; ?>">
-                                    <input type="hidden" name="qty" value="1">
-                                    <button class="gf-btn-buy">Comprar 🛒</button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
 
     </div>
 
