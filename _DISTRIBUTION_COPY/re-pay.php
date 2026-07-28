@@ -1,84 +1,56 @@
 <?php
-// re-pay.php
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/includes/db.php';
-require_once __DIR__ . '/includes/user_auth.php';
-require_once __DIR__ . '/includes/payment_mercadopago.php';
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
 
-session_start();
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
-if (!isLoggedIn()) {
-    header("Location: login.php");
-    exit;
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
+
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
+
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
+    }
 }
 
-$orderId = $_GET['id'] ?? 0;
-$userId = $_SESSION['user_id'];
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
 
-// 1. Fetch Order
-$stmt = $pdo->prepare("SELECT * FROM orders WHERE id = ? AND user_id = ? AND status = 'pending'");
-$stmt->execute([$orderId, $userId]);
-$order = $stmt->fetch();
+$notif = new NotificationService($pdo);
 
-if (!$order) {
-    die("Pedido não encontrado ou já processado.");
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
 }
 
-// 2. Fetch Items
-$stmtItems = $pdo->prepare("SELECT * FROM order_items WHERE order_id = ?");
-$stmtItems->execute([$orderId]);
-$dbItems = $stmtItems->fetchAll();
-
-$items = [];
-foreach ($dbItems as $i) {
-    $items[] = [
-        'id' => $i['product_id'],
-        'name' => $i['product_name'],
-        'qty' => $i['quantity'],
-        'price' => $i['unit_price']
-    ];
-}
-
-// 3. Fetch Shipping Cost
-// The shipping_method column has "Name (R$ Cost)" or similar. 
-// We need to extract the cost if we want to add it as an item like in preference creation.
-// Actually, we can just pass the total if needed, but the createMercadoPagoPreference takes items and shippingCost separately.
-// Let's see how it was saved in checkout_payment.php: ':ship' => "$ship_name (R$ $ship_cost)"
-
-$shippingCost = 0;
-if (preg_match('/R\$ ([\d,.]+)/', $order['shipping_method'], $matches)) {
-    $shippingCost = (float) str_replace(',', '.', $matches[1]);
-}
-
-// 4. Get MP Config
-$stmtMod = $pdo->prepare("SELECT * FROM module_settings WHERE module_key = 'payment_mercadopago'");
-$stmtMod->execute();
-$modMP = $stmtMod->fetch(PDO::FETCH_ASSOC);
-
-if (!$modMP || $modMP['is_active'] == 0) {
-    die("O método de pagamento Mercado Pago não está disponível no momento.");
-}
-
-$keys = json_decode($modMP['settings_json'], true);
-$accessToken = $keys['access_token'] ?? '';
-
-// 5. Payer Info from User Table (latest info)
-$stmtU = $pdo->prepare("SELECT name, email, phone, document FROM users WHERE id = ?");
-$stmtU->execute([$userId]);
-$uData = $stmtU->fetch();
-
-$payerInfo = $uData ?: [];
-
-// 6. Create Preference
-$mpUrl = createMercadoPagoPreference($accessToken, $orderId, $items, $payerInfo, $shippingCost);
-
-if ($mpUrl && strpos($mpUrl, 'ERROR:') === 0) {
-    die("Erro ao conectar com Mercado Pago: " . htmlspecialchars(str_replace('ERROR:', '', $mpUrl)));
-}
-
-if ($mpUrl) {
-    header("Location: " . $mpUrl);
-} else {
-    die("Não foi possível gerar o link de pagamento. Tente novamente mais tarde.");
-}
-exit;
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
+?>
