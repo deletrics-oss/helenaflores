@@ -1,42 +1,56 @@
 <?php
-include 'includes/header_public.php';
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
+
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
+
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
+
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
+
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
+    }
+}
+
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
+
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
 ?>
-
-<div class="container" style="padding: 4rem 1rem; max-width: 900px;">
-    <h1 style="text-align:center; font-size: 2.5rem; margin-bottom: 2rem; color: #4cc9f0;">POLÍTICA DE PRIVACIDADE</h1>
-
-    <div style="color: #ccc; line-height: 1.8;">
-        <p>A <strong>Fight Arcade</strong> preza pela segurança e privacidade de seus clientes. Esta política explica
-            como coletamos e usamos seus dados, em conformidade com a LGPD (Lei Geral de Proteção de Dados).</p>
-
-        <h3 style="color: #fff; margin-top: 2rem;">1. Coleta de Dados</h3>
-        <p>Coletamos apenas as informações estritamente necessárias para processar seu pedido e entregar seus produtos:
-        </p>
-        <ul>
-            <li>Nome completo, CPF e data de nascimento (para emissão de Nota Fiscal).</li>
-            <li>Endereço de entrega e cobrança.</li>
-            <li>E-mail e telefone (para atualizações sobre o pedido).</li>
-        </ul>
-
-        <h3 style="color: #fff; margin-top: 2rem;">2. Segurança no Pagamento</h3>
-        <p>A Fight Arcade <strong>NÃO</strong> armazena dados sensíveis de cartão de crédito. Todo o processamento de
-            pagamento é realizado por gateways seguros e criptografados (Mercado Pago, PagSeguro, etc.), que apenas nos
-            informam se a transação foi aprovada ou recusada.</p>
-
-        <h3 style="color: #fff; margin-top: 2rem;">3. Uso das Informações</h3>
-        <p>Seus dados são utilizados exclusivamente para:</p>
-        <ul>
-            <li>Processamento e envio de pedidos.</li>
-            <li>Comunicação sobre status de entrega.</li>
-            <li>Atendimento ao cliente e suporte pós-venda.</li>
-        </ul>
-        <p>Jamais vendemos ou cedemos seus dados para terceiros para fins de marketing não autorizado.</p>
-
-        <h3 style="color: #fff; margin-top: 2rem;">4. Cookies</h3>
-        <p>Utilizamos cookies apenas para melhorar sua experiência de navegação, como manter itens no seu carrinho e
-            lembrar seu login.</p>
-
-    </div>
-</div>
-
-<?php include 'includes/footer_public.php'; ?>
