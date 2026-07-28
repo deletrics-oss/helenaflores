@@ -1,0 +1,115 @@
+<?php
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/user_auth.php';
+
+// Force Login logic handled manually here to redirect back to checkout
+if (!isLoggedIn()) {
+    header("Location: " . BASE_URL . "/login.php?redirect=checkout");
+    exit;
+}
+
+if (empty($_SESSION['cart'])) {
+    header("Location: " . BASE_URL . "/cart.php");
+    exit;
+}
+
+// Process Order
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $user_id = $_SESSION['user_id'];
+
+    // Recalculate Total (Security)
+    $ids = implode(',', array_keys($_SESSION['cart']));
+    $stmt = $pdo->query("SELECT * FROM products WHERE id IN ($ids)");
+    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $total = 0;
+    $items_to_save = [];
+
+    foreach ($products as $p) {
+        $qty = $_SESSION['cart'][$p['id']];
+        $unit_price = $p['price'];
+        if ($p['price_wholesale'] > 0 && $qty >= $p['min_wholesale_qty']) {
+            $unit_price = $p['price_wholesale'];
+        }
+        $subtotal = $unit_price * $qty;
+        $total += $subtotal;
+
+        $items_to_save[] = [
+            'id' => $p['id'],
+            'name' => $p['name'],
+            'qty' => $qty,
+            'price' => $unit_price,
+            'subtotal' => $subtotal
+        ];
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        // 1. Create Order
+        $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_amount, status, created_at) VALUES (:uid, :total, 'pending', NOW())");
+        $stmt->execute([':uid' => $user_id, ':total' => $total]);
+        $order_id = $pdo->lastInsertId();
+
+        // 2. Create Items
+        $stmt_item = $pdo->prepare("INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, subtotal) VALUES (:oid, :pid, :pname, :qty, :uprice, :sub)");
+
+        foreach ($items_to_save as $i) {
+            $stmt_item->execute([
+                ':oid' => $order_id,
+                ':pid' => $i['id'],
+                ':pname' => $i['name'],
+                ':qty' => $i['qty'],
+                ':uprice' => $i['price'],
+                ':sub' => $i['subtotal']
+            ]);
+        }
+
+        $pdo->commit();
+
+        // 3. Email Notification (Simple)
+        $msg = "Novo pedido #$order_id\nCliente ID: $user_id\nTotal: R$ $total\n\nItens:\n";
+        foreach ($items_to_save as $i) {
+            $msg .= "- {$i['qty']}x {$i['name']} (R$ {$i['subtotal']})\n";
+        }
+        $admin_email = isset($_SESSION['admin_email']) ? $_SESSION['admin_email'] : 'deletrics@gmail.com'; // Fallback
+
+        // Use @ to suppress errors if mail server is not configured locally
+        @mail($admin_email, "Novo Pedido Fight Arcade #$order_id", $msg);
+
+        // 4. Clear Cart
+        unset($_SESSION['cart']);
+
+        // 5. Redirect to Success
+        header("Location: " . BASE_URL . "/order-success.php?id=" . $order_id);
+        exit;
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        die("Erro ao processar pedido: " . $e->getMessage());
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Finalizar Pedido | Fight Arcade</title>
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>/assets/css/style.css">
+</head>
+
+<body>
+    <?php include __DIR__ . '/includes/header_public.php'; ?>
+    <div class="container" style="padding:4rem; text-align:center;">
+        <h1>Confirmar Pedido?</h1>
+        <p>O pagamento será combinado via WhatsApp.</p>
+        <form method="POST">
+            <button type="submit" class="btn btn-success" style="font-size:1.5rem; padding:1rem 3rem;">EFETUAR
+                PEDIDO</button>
+        </form>
+    </div>
+</body>
+
+</html>
