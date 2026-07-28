@@ -1,8 +1,56 @@
-Erros,"Título: informe o produto, marca, modelo e destaque as características principais 
-Caso crie variações, você deve criar um título geral para todas",Quantidade de caracteres,Condição,Código universal de produto,Fotos,SKU,Estoque,Preço [R$],Descrição,Tipo de anúncio,Tarifa de venda,Forma de envio,Custo de envio,Retirar pessoalmente,Tipo de garantia,Tempo de garantia,Unidade de Tempo de garantia,Marca,Modelo
-"Características do produto / Variação: Complete os dados obrigatórios: Marca, Modelo.
-Tipo de publicación: O dado é obrigatório.",BOTAO-ARCADE-VERDE,"=LEN(INDIRECT(ADDRESS(ROW() + (0),COLUMN() + (-1))))",Novo,7890000000055,"https://www.fightarcade.com.br/catalogo/assets/uploads/img_698270bd6a220.jpg, https://www.fightarcade.com.br/catalogo/assets/uploads/gal_698270bd76408.jpg",BOTAO-ARCADE-VERDE,200,9.9,"BOTAO-ARCADE-VERDE FightArcade. Produto novo, envio rápido.",Clássico,,Mercado Envios,Por conta do comprador,Não aceito,Garantia do vendedor,30,dias,FightArcade,BOTAO-ARCADE-VERDE
-"Características do produto / Variação: Complete os dados obrigatórios: Marca, Modelo.
-Tipo de publicación: O dado é obrigatório.",CABO-ADAPTADOR-EXTENSOR-USB-FEMEA-PINAGEM-INTERNA-JST-4-PINO,"=LEN(INDIRECT(ADDRESS(ROW() + (0),COLUMN() + (-1))))",Novo,7891020306017,"https://www.fightarcade.com.br/catalogo/assets/uploads/img_6983ac7b0202f.jpg, https://www.fightarcade.com.br/catalogo/assets/uploads/gal_6983ac7b0df3c.jpg",CABO-ADAPTADOR-EXTENSOR-USB-FEMEA-PINAGEM-INTERNA-JST-4-PINO,100,19.9,"CABO-ADAPTADOR-EXTENSOR-USB-FEMEA-PINAGEM-INTERNA-JST-4-PINO FightArcade. Produto novo, envio rápido.",Clássico,,Mercado Envios,Por conta do comprador,Não aceito,Garantia do vendedor,30,dias,FightArcade,CABO-ADAPTADOR-EXTENSOR-USB-FEMEA-PINAGEM-INTERNA-JST-4-PINO
-"Características do produto / Variação: Complete os dados obrigatórios: Marca, Modelo.
-Tipo de publicación: O dado é obrigatório.",BOTAO-ARCADE-VERMELHO,"=LEN(INDIRECT(ADDRESS(ROW() + (0),COLUMN() + (-1))))",Novo,7890000000024,"https://www.fightarcade.com.br/catalogo/assets/uploads/img_69825ee560909.jpg, https://www.fightarcade.com.br/catalogo/assets/uploads/gal_69825e1ce9b48.jpg, https://www.fightarcade.com.br/catalogo/assets/uploads/gal_69825ee56a364.jpg",BOTAO-ARCADE-VERMELHO,200,9.9,"BOTAO-ARCADE-VERMELHO FightArcade. Produto novo, envio rápido.",Clássico,,Mercado Envios,Por conta do comprador,Não aceito,Garantia do vendedor,30,dias,FightArcade,BOTAO-ARCADE-VERMELHO
+<?php
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
+
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
+
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
+
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
+
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
+    }
+}
+
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
+
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
+?>
