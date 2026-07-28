@@ -9,31 +9,15 @@ require_once __DIR__ . '/../robot_scraper.php';
 
 $message = '';
 $result = null;
-$executionOutput = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $robot = new CatalogRobotScraper($pdo);
     $btn = $_POST['btn_action'] ?? '';
 
-    if ($btn === 'run_playwright') {
-        // Executa o Robô Playwright Node.js diretamente no portal
-        $cmd = 'cd ' . escapeshellarg(__DIR__ . '/../robot_playwright') . ' && node scraper.js 2>&1';
-        $executionOutput = shell_exec($cmd);
-        
-        // Em seguida executa o seeder para vincular tudo
+    if ($btn === 'one_click') {
         ob_start();
         include __DIR__ . '/../seed_helena_flores.php';
-        $seederOutput = ob_get_clean();
-
-        $message = '<div class="alert alert-success" style="background:#E8F5E9; color:#2E7D32; padding:20px; border-radius:12px; margin-bottom:1.5rem;">'
-                 . '🤖 <strong>Robô Playwright Executado no Portal com Sucesso!</strong><br><pre style="background:#FFF; padding:10px; border-radius:8px; margin-top:10px; font-size:0.85rem; max-height:200px; overflow-y:auto;">'
-                 . htmlspecialchars($executionOutput ?: 'Robô disparado com sucesso no servidor!')
-                 . '</pre></div>';
-    } elseif ($btn === 'one_click') {
-        ob_start();
-        include __DIR__ . '/../seed_helena_flores.php';
-        $seederHtml = ob_get_clean();
-        $message = $seederHtml;
+        $message = ob_get_clean();
     } else {
         $rawJson = $_POST['raw_json'] ?? '';
         if (!empty($rawJson)) {
@@ -54,23 +38,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             🤖 Robô Extrator Helena Flores — Painel Administrativo
         </h1>
         <p style="font-size:1rem; line-height:1.6; color:#FFF8F9; margin-bottom:1.5rem;">
-            Selecione uma das opções abaixo para executar o robô extrator e cadastrar automaticamente <strong>TODOS os 118 produtos e fotos do WhatsApp Business</strong> no seu banco de dados MySQL!
+            Clique no botão abaixo para cadastrar automaticamente <strong>TODOS os 118 produtos e fotos do WhatsApp Business</strong> no seu banco de dados MySQL na Hostinger!
         </p>
 
         <div style="display:flex; gap:15px; flex-wrap:wrap;">
-            <!-- Botão 1: Executar Robô Playwright -->
-            <form method="POST" style="flex:1; min-width:280px;">
-                <input type="hidden" name="btn_action" value="run_playwright">
-                <button type="submit" class="btn" style="width:100%; background:#FFC107; color:#000; font-size:1.1rem; font-weight:800; padding:16px 24px; border-radius:30px; border:none; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.3);">
-                    🤖 1. EXECUTAR ROBÔ PLAYWRIGHT NO PORTAL
-                </button>
-            </form>
-
-            <!-- Botão 2: Sincronizar Banco 118 Itens -->
+            <!-- Botão 1: Sincronizar Banco 118 Itens -->
             <form method="POST" style="flex:1; min-width:280px;">
                 <input type="hidden" name="btn_action" value="one_click">
-                <button type="submit" class="btn" style="width:100%; background:#4CAF50; color:#FFF; font-size:1.1rem; font-weight:800; padding:16px 24px; border-radius:30px; border:none; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.3);">
-                    ⚡ 2. SINCRONIZAR 118 PRODUTOS NO BANCO (1-CLIQUE)
+                <button type="submit" class="btn" style="width:100%; background:#4CAF50; color:#FFF; font-size:1.15rem; font-weight:800; padding:16px 24px; border-radius:30px; border:none; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.3);">
+                    ⚡ 1. SINCRONIZAR TODOS OS 118 PRODUTOS NO BANCO DE DADOS
                 </button>
             </form>
         </div>
