@@ -1,0 +1,207 @@
+<?php
+require_once __DIR__ . "/config.php";
+require_once __DIR__ . "/includes/db.php";
+session_start();
+
+// Filter Logic
+$cat_id = isset($_GET["cat"]) ? (int) $_GET["cat"] : 0;
+$search = isset($_GET["q"]) ? trim($_GET["q"]) : "";
+
+// Build Query
+$sql = "SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.active = 1 AND p.is_vip = 0";
+$params = [];
+
+if ($cat_id) {
+    $sql .= " AND p.category_id = :cat";
+    $params[":cat"] = $cat_id;
+}
+
+// SEARCH FIX: Using unique parameters for each LIKE clause
+if ($search) {
+    $sql .= " AND (p.name LIKE :q1 OR p.description LIKE :q2 OR p.sku LIKE :q3)";
+    $params[":q1"] = "%$search%";
+    $params[":q2"] = "%$search%";
+    $params[":q3"] = "%$search%";
+}
+
+$sql .= " ORDER BY p.featured DESC, p.created_at DESC";
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$products = $stmt->fetchAll();
+
+// Fetch Categories for Sidebar
+$cats = $pdo->query("SELECT * FROM categories ORDER BY name")->fetchAll();
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo | Fight Arcade</title>
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>/assets/css/style.css">
+</head>
+
+<body>
+
+    <?php
+include __DIR__ . "/includes/header_public.php";
+if (!isset($_SESSION["user_id"])) {
+    include __DIR__ . "/login.php";
+}
+?>
+
+    <!-- Dynamic Hero Slider -->
+    <?php
+    // Fetch latest 3 products with images for the banner
+    $stmt_banner = $pdo->query("SELECT * FROM products WHERE image_path IS NOT NULL AND image_path != '' ORDER BY created_at DESC LIMIT 3");
+    $banner_products = $stmt_banner->fetchAll();
+    ?>
+
+    <?php if (count($banner_products) > 0): ?>
+        <div class="hero-slider">
+            <?php foreach ($banner_products as $index => $bp): ?>
+                <div class="slide <?php echo $index === 0 ? 'active' : ''; ?>"
+                    style="background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.8)), url('assets/uploads/<?php echo $bp['image_path']; ?>');">
+                    <div class="hero-content">
+                        <h1><?php echo htmlspecialchars($bp['name']); ?></h1>
+                        <p><?php echo mb_strimwidth(htmlspecialchars($bp['description']), 0, 100, '...'); ?></p>
+                        <div class="price-tag-hero">R$ <?php echo number_format($bp['price'], 2, ',', '.'); ?></div>
+                        <a href="?search=<?php echo urlencode($bp['name']); ?>" class="btn">Ver Detalhes</a>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+
+            <script>
+                let currentSlide = 0;
+                const slides = document.querySelectorAll('.slide');
+                if (slides.length > 1) {
+                    setInterval(() => {
+                        slides[currentSlide].classList.remove('active');
+                        currentSlide = (currentSlide + 1) % slides.length;
+                        slides[currentSlide].classList.add('active');
+                    }, 5000);
+                }
+            </script>
+        </div>
+    <?php else: ?>
+        <!-- Fallback Static Banner -->
+        <section class="hero-banner">
+            <div class="hero-content">
+                <h1>Fight Arcade</h1>
+                <p>Os melhores equipamentos para o seu setup.</p>
+                <a href="#produtos" class="btn">Ver Catálogo</a>
+            </div>
+        </section>
+    <?php endif; ?>
+
+    <div class="container" id="produtos" style="margin-top: 2rem;">
+
+        <!-- Search & Filter -->
+        <div class="filters"
+            style="background:var(--bg-card); padding:1rem; border-radius:8px; display:flex; gap:1rem; margin-bottom:2rem; flex-wrap:wrap; border:1px solid var(--border);">
+            <form style="flex:1; display:flex; gap:0.5rem;" method="GET">
+                <input type="text" name="q" placeholder="Buscar produto..."
+                    value="<?php echo htmlspecialchars($search); ?>" style="margin:0;">
+                <button type="submit" class="btn">Buscar</button>
+            </form>
+
+            <div style="display:flex; gap:0.5rem; overflow-x:auto;">
+                <a href="index.php" class="btn btn-secondary <?php echo !$cat_id ? 'active' : ''; ?>">Todos</a>
+                <?php foreach ($cats as $c): ?>
+                    <a href="?cat=<?php echo $c['id']; ?>"
+                        class="btn btn-secondary <?php echo $cat_id == $c['id'] ? 'active' : ''; ?>">
+                        <?php echo htmlspecialchars($c['name']); ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- Product Grid -->
+        <div class="products-grid">
+            <?php if (count($products) > 0): ?>
+                <?php foreach ($products as $p): ?>
+                    <a href="product.php?id=<?php echo $p['id']; ?>" class="product-card">
+                        <div class="product-img">
+                            <?php if ($p['image_path']): ?>
+                                <img src="<?php echo BASE_URL; ?>/assets/uploads/<?php echo $p['image_path']; ?>"
+                                    alt="<?php echo htmlspecialchars($p['name']); ?>">
+                            <?php else: ?>
+                                <div style="color:#666;">Sem imagem</div>
+                            <?php endif; ?>
+                        </div>
+                        <div class="product-info">
+                            <div class="product-cat"><?php echo htmlspecialchars($p['category_name'] ?? 'Geral'); ?></div>
+                            <div class="product-title"><?php echo htmlspecialchars($p['name']); ?></div>
+                            <div class="product-sku">SKU: <?php echo htmlspecialchars($p['sku']); ?></div>
+
+                            <div class="prices">
+                                <div class="price-tag">
+                                    <span class="price-label">Varejo</span>
+                                    <span class="price-value">R$ <?php echo number_format($p['price'], 2, ',', '.'); ?></span>
+                                </div>
+                                <?php if ($p['price_wholesale'] > 0): ?>
+                                    <div class="price-tag">
+                                        <span class="price-label">Atacado</span>
+                                        <span class="price-value" style="color:var(--accent)">R$
+                                            <?php echo number_format($p['price_wholesale'], 2, ',', '.'); ?></span>
+                                    </div>
+                                    <div class="wholesale-badge">Mínimo <?php echo $p['min_wholesale_qty']; ?> peças</div>
+                                <?php endif; ?>
+                            </div>
+
+                            <form action="cart.php" method="POST" style="margin-top:1rem;" onclick="event.stopPropagation();">
+                                <input type="hidden" name="action" value="add">
+                                <input type="hidden" name="product_id" value="<?php echo $p['id']; ?>">
+                                <input type="hidden" name="quantity" value="1">
+                                <button class="btn" style="width:100%">Adicionar ao Carrinho</button>
+                            </form>
+                        </div>
+                    </a>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <p>Nenhum produto encontrado.</p>
+            <?php endif; ?>
+        </div>
+
+    </div>
+
+    <footer>
+        <div class="container">
+            <?php
+            $set_file = __DIR__ . '/includes/site_settings.json';
+            $settings = file_exists($set_file) ? json_decode(file_get_contents($set_file), true) : [];
+            ?>
+
+            <div
+                style="display:grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap:2rem; text-align:left; margin-bottom:2rem;">
+                <div>
+                    <h3 style="color:var(--primary); margin-bottom:1rem;">Fight Arcade</h3>
+                    <p>Sua loja especializada em peças Arcade.</p>
+                </div>
+                <div>
+                    <h4 style="color:#fff; margin-bottom:1rem;">Atendimento</h4>
+                    <?php if (!empty($settings['whatsapp'])): ?>
+                        <p>📱 WhatsApp: <?php echo $settings['whatsapp']; ?></p>
+                    <?php endif; ?>
+                    <?php if (!empty($settings['hours'])): ?>
+                        <p>🕒 <?php echo $settings['hours']; ?></p>
+                    <?php endif; ?>
+                </div>
+                <div>
+                    <h4 style="color:#fff; margin-bottom:1rem;">Endereço</h4>
+                    <?php if (!empty($settings['address'])): ?>
+                        <p>📍 <?php echo $settings['address']; ?></p>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div style="border-top:1px solid #333; padding-top:1rem; text-align:center;">
+                &copy; <?php echo date('Y'); ?> Fight Arcade. Todos os direitos reservados.
+            </div>
+        </div>
+    </footer>
+
+</body>
+
+</html>
