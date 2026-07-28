@@ -1,48 +1,56 @@
 <?php
-include 'includes/header_public.php';
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
+
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
+
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
+
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
+
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
+    }
+}
+
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
+
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
 ?>
-
-<div class="container" style="padding: 4rem 1rem; max-width: 900px;">
-    <h1 style="text-align:center; font-size: 2.5rem; margin-bottom: 1rem; color: #4cc9f0;">QUEM SOMOS</h1>
-    <p style="text-align:center; color: #aaa; margin-bottom: 3rem; font-size: 1.1rem;">A referência definitiva em
-        Arcades e Retrogaming no Brasil.</p>
-
-    <div
-        style="background: #111; padding: 2rem; border-radius: 12px; border: 1px solid #333; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
-
-        <h2 style="color: #e056fd; margin-bottom: 1rem;">🎮 Nossa Missão</h2>
-        <p style="line-height: 1.6; margin-bottom: 2rem;">
-            A <strong>Fight Arcade</strong> nasceu de uma paixão incondicional pelos jogos clássicos que marcaram
-            gerações.
-            Não somos apenas uma loja; somos fabricantes e entusiastas dedicados a trazer a experiência autêntica dos
-            fliperamas
-            diretamente para a sua casa.
-        </p>
-
-        <h2 style="color: #f1c40f; margin-bottom: 1rem;">🏭 Fabricação Própria</h2>
-        <p style="line-height: 1.6; margin-bottom: 2rem;">
-            Diferente de revendedores, nós colocamos a mão na massa. Nossos controles e máquinas são projetados e
-            montados
-            com materiais de alta durabilidade, corte a laser de precisão e acabamento premium. Cada detalhe, do clique
-            do botão
-            ao design da arte, é pensado para performance competitiva e nostalgia pura.
-        </p>
-
-        <h2 style="color: #2ecc71; margin-bottom: 1rem;">🚀 Por que escolher a Fight Arcade?</h2>
-        <ul style="list-style: none; padding: 0; line-height: 1.8;">
-            <li>✅ <strong>Qualidade Zero Delay:</strong> Placas e componentes testados para zero latência.</li>
-            <li>✅ <strong>Suporte Especializado:</strong> Falamos a sua língua. Dúvidas sobre montagem ou peças? Nós
-                resolvemos.</li>
-            <li>✅ <strong>Garantia Real:</strong> Produtos com garantia e procedência garantida.</li>
-            <li>✅ <strong>Envio Rápido:</strong> Logística otimizada para todo o Brasil.</li>
-        </ul>
-
-    </div>
-
-    <div style="text-align:center; margin-top: 3rem;">
-        <a href="catalogo.php" class="btn btn-lg" style="padding: 1rem 2rem; font-size: 1.2rem;">EXPLORAR CATÁLOGO
-            🕹️</a>
-    </div>
-</div>
-
-<?php include 'includes/footer_public.php'; ?>
