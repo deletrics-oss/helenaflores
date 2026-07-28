@@ -1,0 +1,208 @@
+<?php
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/user_auth.php';
+isAdmin();
+
+$users = $pdo->query("SELECT id, name, document, phone FROM users WHERE role != 'admin' AND (is_lead = 0 OR is_lead IS NULL) ORDER BY name")->fetchAll();
+$products = $pdo->query("SELECT id, name, sku, price, image_path FROM products WHERE active = 1 ORDER BY name")->fetchAll();
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $user_id = (int) $_POST['user_id'];
+    $shipping = $_POST['shipping_method'];
+    $discount = (float) ($_POST['discount_amount'] ?? 0);
+    $items_raw = $_POST['items'] ?? [];
+    $status = $_POST['order_status'] ?? 'pending';
+
+    $items_to_add = [];
+    $total = 0;
+
+    foreach ($items_raw as $pid => $qty) {
+        $qty = (int) $qty;
+        if ($qty > 0) {
+            $curr_p = $pdo->query("SELECT * FROM products WHERE id = $pid")->fetch();
+            if ($curr_p) {
+                $price = $curr_p['price'];
+                if ($curr_p['price_wholesale'] > 0 && $qty >= $curr_p['min_wholesale_qty']) {
+                    $price = $curr_p['price_wholesale'];
+                }
+                
+                if (isset($_POST['is_gift'][$pid])) {
+                    $price = 0;
+                    $curr_p['name'] = '[BRINDE] ' . $curr_p['name'];
+                }
+
+                $subtotal = $price * $qty;
+                $cost_price = (float)($curr_p['cost_price'] ?? 0);
+                $items_to_add[] = [
+                    'id' => $pid, 
+                    'name' => $curr_p['name'], 
+                    'price' => $price, 
+                    'qty' => $qty, 
+                    'subtotal' => $subtotal,
+                    'cost_price' => $cost_price
+                ];
+                $total += $subtotal;
+            }
+        }
+    }
+
+    $final_total = max(0, $total - $discount);
+
+    if (count($items_to_add) > 0 && $user_id > 0) {
+        try {
+            $pdo->beginTransaction();
+            try {
+                $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_amount, discount_amount, status, shipping_method, created_at) VALUES (?, ?, ?, ?, ?, NOW())");
+                $stmt->execute([$user_id, $final_total, $discount, $status, $shipping]);
+            } catch (PDOException $col_err) {
+                // discount_amount column may not exist yet
+                $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_amount, status, shipping_method, created_at) VALUES (?, ?, ?, ?, NOW())");
+                $stmt->execute([$user_id, $final_total, $status, $shipping]);
+            }
+            $order_id = $pdo->lastInsertId();
+
+            $stmt_i = $pdo->prepare("INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, subtotal, cost_price) VALUES (?,?,?,?,?,?,?)");
+            foreach ($items_to_add as $i) {
+                $stmt_i->execute([$order_id, $i['id'], $i['name'], $i['qty'], $i['price'], $i['subtotal'], $i['cost_price']]);
+            }
+
+            // --- FINANCIAL LEDGER INTEGRATION ---
+            if ($status !== 'pending') {
+                // 1. Increase User Debt
+                $pdo->prepare("UPDATE users SET current_debt = current_debt + ? WHERE id = ?")->execute([$final_total, $user_id]);
+
+                // 2. If already paid, register payment and clear debt
+                if ($status === 'paid') {
+                    $pdo->prepare("INSERT INTO customer_payments (user_id, amount, payment_method, description) VALUES (?, ?, ?, ?)")
+                        ->execute([$user_id, $final_total, 'Manual/POS', "Pagamento integral do Pedido #$order_id"]);
+                    $pdo->prepare("UPDATE users SET current_debt = current_debt - ? WHERE id = ?")->execute([$final_total, $user_id]);
+                }
+            }
+
+            $pdo->commit();
+            header("Location: orders.php?msg=created");
+            exit;
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            $error = "Erro: " . $e->getMessage();
+        }
+    } else {
+        $error = "Selecione um cliente e adicione pelo menos 1 item.";
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Criar Pedido Manual | Admin</title>
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <style>
+        .product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;max-height:500px;overflow-y:auto;padding:5px}
+        .product-card{background:#222;border:1px solid #333;border-radius:8px;padding:10px;display:flex;gap:10px;align-items:center;transition:border-color .2s}
+        .product-card:hover{border-color:var(--primary)}
+        .product-card img{width:50px;height:50px;object-fit:cover;border-radius:4px;flex-shrink:0}
+        .product-card .info{flex:1;min-width:0}
+        .product-card .pname{font-size:.85rem;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .product-card .pprice{color:var(--primary);font-size:.85rem}
+        .product-card input{width:55px;padding:5px;background:#111;color:#fff;border:1px solid #444;border-radius:4px;text-align:center}
+        .product-card.has-qty{border-color:#2ecc71;background:rgba(46,204,113,.05)}
+        #productSearch{width:100%;padding:12px;background:#111;border:1px solid #444;color:#fff;border-radius:6px;font-size:1rem;margin-bottom:10px}
+    </style>
+</head>
+<body>
+    <?php include 'header.php'; ?>
+
+    <div class="container" style="padding-top:2rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem">
+            <h1>Criar Pedido Manual</h1>
+            <a href="orders.php" class="btn btn-secondary">Voltar</a>
+        </div>
+
+        <?php if (isset($error)): ?>
+        <div style="background:var(--danger);color:white;padding:1rem;margin-bottom:1rem;border-radius:6px"><?php echo $error; ?></div>
+        <?php endif; ?>
+
+        <form method="POST">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:2rem;background:#222;padding:1.5rem;border-radius:8px;border:1px solid #333">
+                <div>
+                    <label style="display:block;margin-bottom:5px;font-weight:bold">👤 Cliente</label>
+                    <select name="user_id" required style="width:100%;padding:10px;background:#111;color:#fff;border:1px solid #444;border-radius:4px">
+                        <option value="">Selecione...</option>
+                        <?php foreach ($users as $u): ?>
+                        <option value="<?php echo $u['id']; ?>"><?php echo htmlspecialchars($u['name']); ?> (<?php echo $u['document'] ?: $u['phone']; ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:5px;font-weight:bold">🚚 Envio</label>
+                    <select name="shipping_method" style="width:100%;padding:10px;background:#111;color:#fff;border:1px solid #444;border-radius:4px">
+                        <option value="A Combinar">A Combinar</option>
+                        <option value="Retirada">Retirada</option>
+                        <option value="Transportadora">Transportadora</option>
+                        <option value="Motoboy">Motoboy</option>
+                        <option value="Melhor Envio">Melhor Envio</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:5px;font-weight:bold">📋 Status</label>
+                    <select name="order_status" style="width:100%;padding:10px;background:#111;color:#fff;border:1px solid #444;border-radius:4px">
+                        <option value="pending">⏳ Pendente</option>
+                        <option value="paid">✅ Pago</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <h3>Adicionar Produtos</h3>
+                <div style="display:flex;align-items:center;gap:10px;background:#222;padding:8px 15px;border-radius:6px">
+                    <label style="font-size:.9rem">💰 Desconto: R$</label>
+                    <input type="number" name="discount_amount" value="0" min="0" step="0.01" style="width:120px;padding:8px;background:#111;color:#fff;border:1px solid #444;border-radius:4px;text-align:right">
+                </div>
+            </div>
+
+            <input type="text" id="productSearch" placeholder="🔍 Buscar produto por nome ou SKU..." onkeyup="filterProducts()">
+
+            <div class="product-grid" id="productGrid">
+                <?php foreach ($products as $p): ?>
+                <div class="product-card" id="card_<?php echo $p['id']; ?>">
+                    <?php if (!empty($p['image_path'])): ?>
+                    <img src="../assets/uploads/<?php echo $p['image_path']; ?>">
+                    <?php else: ?>
+                    <div style="width:50px;height:50px;background:#333;border-radius:4px;flex-shrink:0"></div>
+                    <?php endif; ?>
+                    <div class="info">
+                        <div class="pname" title="<?php echo htmlspecialchars($p['name']); ?>"><?php echo htmlspecialchars($p['name']); ?></div>
+                        <div class="pprice">R$ <?php echo number_format($p['price'],2,',','.'); ?></div>
+                        <small style="color:#666"><?php echo $p['sku']; ?></small>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:5px; align-items:center;">
+                        <input type="number" name="items[<?php echo $p['id']; ?>]" min="0" placeholder="0" oninput="highlightCard(this, <?php echo $p['id']; ?>)">
+                        <label style="display:flex;align-items:center;gap:3px;font-size:0.75rem;color:#f39c12;cursor:pointer;" title="Marcar como Brinde/Amostra">
+                            <input type="checkbox" name="is_gift[<?php echo $p['id']; ?>]" value="1" style="width:auto;margin:0;padding:0;">
+                            🎁 Brinde
+                        </label>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <button type="submit" class="btn btn-success" style="margin-top:2rem;width:100%;padding:1rem;font-size:1.2rem">CRIAR PEDIDO</button>
+        </form>
+    </div>
+
+    <script>
+    function filterProducts() {
+        const filter = document.getElementById('productSearch').value.toUpperCase();
+        document.querySelectorAll('.product-card').forEach(card => {
+            card.style.display = card.textContent.toUpperCase().includes(filter) ? '' : 'none';
+        });
+    }
+    function highlightCard(input, id) {
+        const card = document.getElementById('card_' + id);
+        if (parseInt(input.value) > 0) { card.classList.add('has-qty'); } else { card.classList.remove('has-qty'); }
+    }
+    </script>
+</body>
+</html>
