@@ -1,7 +1,6 @@
 <?php
 /**
- * seed_helena_flores.php — Semeador Completo dos 118 Produtos do WhatsApp Business Helena Flores
- * Mapeia automaticamente todas as imagens salvas na pasta assets/uploads/
+ * seed_helena_flores.php — Semeador Completo dos 118 Produtos com Nomes Exatos de Fotos
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/db.php';
@@ -27,51 +26,7 @@ function detectCatName($title) {
     return 'Rosas Colombianas';
 }
 
-// Scans local assets/uploads/ for all available files
 $uploadDir = __DIR__ . '/assets/uploads/';
-$localFiles = [];
-if (file_exists($uploadDir)) {
-    $files = scandir($uploadDir);
-    foreach ($files as $f) {
-        if ($f !== '.' && $f !== '..' && is_file($uploadDir . $f) && !is_dir($uploadDir . $f)) {
-            if (preg_match('/\.(jpg|jpeg|png|webp)$/i', $f)) {
-                $localFiles[] = $f;
-            }
-        }
-    }
-}
-
-function getBestLocalImage($title, $index, $localFiles) {
-    if (empty($localFiles)) return 'rose_red.jpg';
-
-    // 1. Try finding a file matching the product title/slug
-    $slug = makeSlug($title);
-    foreach ($localFiles as $lf) {
-        if (stripos($lf, $slug) !== false || stripos($lf, str_replace('-', '_', $slug)) !== false) {
-            return $lf;
-        }
-    }
-
-    // 2. Try finding by keyword
-    if (preg_match('/girassol/i', $title)) {
-        foreach ($localFiles as $lf) { if (stripos($lf, 'girassol') !== false) return $lf; }
-    }
-    if (preg_match('/cesta/i', $title)) {
-        foreach ($localFiles as $lf) { if (stripos($lf, 'cesta') !== false) return $lf; }
-    }
-    if (preg_match('/orquidea|orquídea/i', $title)) {
-        foreach ($localFiles as $lf) { if (stripos($lf, 'orquidea') !== false) return $lf; }
-    }
-    if (preg_match('/tulipa/i', $title)) {
-        foreach ($localFiles as $lf) { if (stripos($lf, 'tulipa') !== false) return $lf; }
-    }
-    if (preg_match('/ferreiro|rocher|bombom/i', $title)) {
-        foreach ($localFiles as $lf) { if (stripos($lf, 'ferrero') !== false || stripos($lf, 'kit') !== false) return $lf; }
-    }
-
-    // 3. Fallback: rotate available files in assets/uploads/
-    return $localFiles[$index % count($localFiles)];
-}
 
 try {
     // 1. Categories
@@ -98,139 +53,141 @@ try {
         }
     }
 
-    // 2. Raw 118 Products List
+    // 2. Exact 118 Products List with Exact Image File Paths provided by User
     $raw118Products = [
-        ["title" => "Buque com 12 Colombianas", "price" => 300.00, "description" => "Buquê de 12 Rosas Colombianas selecionadas com fita de cetim."],
-        ["title" => "Buquê com rosas colombianas", "price" => 320.00, "description" => "12 Rosas colombianas Folhagem verde e gypsofila Embalagem kraft e laço branco"],
-        ["title" => "Buque de Rosas pink colombiana", "price" => 320.00, "description" => "12 rosas colombianas Folhagem verde e tango Embalagem e laço rosa"],
-        ["title" => "Cesta com Chambinho do Amor", "price" => 350.00, "description" => "Cesta especial recheada de carinho com rosas e mimos"],
-        ["title" => "Cesta com Rosa e Urso", "price" => 320.00, "description" => "Arranjo de Rosa Colombiana Urso pequeno Ferreiro Rocher 100g Cesta"],
-        ["title" => "Kit dia dos namorados", "price" => 1300.00, "description" => "1 buque com 12 rosas colombianas vermelhas + gypso 1 box de 6 rosas e 4 astromelias brancas e gypso 1 pacote de pétalas 1 urso médio 1 Chandon G 1 cartão de amor G Buque de balões"],
-        ["title" => "Buquê com 15 rosas", "price" => 300.00, "description" => "15 rosas nacionais"],
-        ["title" => "Buquê com 15 Rosas amarelas", "price" => 300.00, "description" => "Buquê com 15 Rosas amarelas"],
-        ["title" => "Buquê com Rosas Rosé", "price" => 240.00, "description" => "12 Rosas nacionais cor de rosa"],
-        ["title" => "Buquê Lily", "price" => 250.00, "description" => "1 galhos de lírios rosa e 1 lírio branco 12 astromelias coloridas Folhagem e lirios"],
-        ["title" => "Buque de Mix de Flores", "price" => 580.00, "description" => "4 Rosas Colombianas 3 galhos de lirios coloridos 10 astromélias 4 gerbera colorida 4 Hortensia"],
-        ["title" => "Buquê rosa", "price" => 280.00, "description" => "5 Rosas cor de rosa 5 rosa amarela 4 astromelias Rosa 4 amarela 4 hortênsia"],
-        ["title" => "Cesta de café", "price" => 400.00, "description" => "Arranjo com 4 gerberas vermelhas folhagem verde ruscos. Torrada Toddynho Pão maçã, uva, mamão Cereal chá geleia Bolo café"],
-        ["title" => "Cesta de café com rosa", "price" => 380.00, "description" => "Arranjo de rosa Torrada Sucrilhos Maça Uva Mamão Cappuccino Suco Iorgute Requeijão queijo presunto Pão francês pães de queijo"],
-        ["title" => "Cesta de Café Premium", "price" => 400.00, "description" => "Arranjo de rosa Torrada Sucrilhos Maça Cappuccino Suco Iorgute Requeijão Nutella frios Pão francês croissant Carolinas"],
-        ["title" => "Arranjo de Rosas e Lírio", "price" => 350.00, "description" => "4 Rosas colombianas vermelhas 2 galhos de Lirios Folhagem verde e ruscos"],
-        ["title" => "Arranjo com Rosas vermelhas", "price" => 450.00, "description" => "18 rosas nacionais vermelhas Folhagem de pit Vaso de vidro"],
-        ["title" => "Arranjo com 3 Rosas Colombianas", "price" => 150.00, "description" => "3 Rosas Colombianas aberta a mão Folhagem verde e tango Embalagem"],
-        ["title" => "Ferreiro Rocher 50g", "price" => 25.00, "description" => "Caixa de bombons Ferreiro Rocher 50g"],
-        ["title" => "Ferreiro Rocher 100g", "price" => 60.00, "description" => "Ferreiro Rocher 100g"],
-        ["title" => "Ferreiro Rocher Collection 77g", "price" => 65.00, "description" => "Ferreiro Rocher Collection 77g"],
-        ["title" => "Buque de girassol", "price" => 150.00, "description" => "6 girassóis Folhagem verde e tango Kraft e laço"],
-        ["title" => "Buquê de Girassol e Astromélias", "price" => 200.00, "description" => "6 girassóis 4 astromelias brancas"],
-        ["title" => "Buquê com Rosas e Girassóis", "price" => 450.00, "description" => "8 Rosas Colombianas manipuladas 8 girassóis"],
-        ["title" => "Bujudinho de Astromélias coloridas", "price" => 130.00, "description" => "9 astromelias coloridas Folhagem de tango Vaso de vidro Laço"],
-        ["title" => "Arranjo de flores", "price" => 280.00, "description" => "Lirio 2 gerberas 4 Rosas 4 flores do campo 2 cravina Rosa 4 astromelias Box"],
-        ["title" => "Arranjo de Flores Finas", "price" => 350.00, "description" => "1 Lirio Branco 2 gerberas 6 Rosas 4 crisântemos 6 astromelias Vaso de vidro"],
-        ["title" => "Emoji pelúcia", "price" => 40.00, "description" => "Emoji pelúcia artesanal"],
-        ["title" => "Coração de pelúcia", "price" => 45.00, "description" => "Coração de pelúcia 13cm"],
-        ["title" => "Urso p", "price" => 70.00, "description" => "Mini urso de pelúcia 18cm"],
-        ["title" => "Orquidea", "price" => 450.00, "description" => "Orquídea Phalaenopsis selecionada"],
-        ["title" => "Arranjo com 3 orquideas brancas", "price" => 1400.00, "description" => "3 orquideas brancas cascatas em Vaso de vidro"],
-        ["title" => "Orquídea pink", "price" => 350.00, "description" => "Orquídea cor de rosa vibrante"],
-        ["title" => "Begonia", "price" => 150.00, "description" => "Planta Begônia floridade"],
-        ["title" => "Lirio rosa", "price" => 150.00, "description" => "Lírio rosa plantado em vaso"],
-        ["title" => "Lirio amarelo", "price" => 150.00, "description" => "Lírio amarelo plantado em vaso"],
-        ["title" => "Mini Orquidea Branca", "price" => 250.00, "description" => "Mini Orquídea branca elegante (45cm)"],
-        ["title" => "Mini orquidea pink", "price" => 250.00, "description" => "Mini orquídea pink em vaso"],
-        ["title" => "Arranjo com mini orquídea brancas", "price" => 700.00, "description" => "4 vasos de mini orquídeas brancas Vaso de vidro Casca"],
-        ["title" => "Violeta na cesta", "price" => 70.00, "description" => "Vaso de violeta montado em cesta delicada"],
-        ["title" => "Kit Maternidade Clássico", "price" => 380.00, "description" => "Arranjo de astromélias, Urso, Cesta de vime, Colônia, Lencinho e Pomada"],
-        ["title" => "Kit maternidade Premium", "price" => 500.00, "description" => "1 mini orquídea, Urso p, Colônia, Lencinho, Pomada e Creme de hidratação"],
-        ["title" => "Arranjo com Chocolate", "price" => 130.00, "description" => "Arranjo floral acompanhado de caixa de chocolates"],
-        ["title" => "Rosa e Ferrero 50g", "price" => 50.00, "description" => "1 rosa colombiana com Ferrero Rocher 50g"],
-        ["title" => "Girassol Solidário com Ferreiro Collection", "price" => 90.00, "description" => "Girassol vibrante acompanhado de caixa Ferrero Collection"],
-        ["title" => "Buque de tulipas rosa", "price" => 350.00, "description" => "10 tulipas, ruscus e gypso em embalagem papel jornal"],
-        ["title" => "Buque com tulipas e rosas inglesas", "price" => 680.00, "description" => "20 tulipas rosas e 3 rosas inglesas com Gypso e Ruscos"],
-        ["title" => "Poinssetia", "price" => 100.00, "description" => "Planta Poinsettia (Flor do Natal) 35cm-40cm"],
-        ["title" => "Kit Natalino", "price" => 180.00, "description" => "Poinsettia, Pinguim natalino e Cesta de vime"],
-        ["title" => "Kit Natal", "price" => 180.00, "description" => "Pinheiro, Poinsettia e Cesta de vime decorada"],
-        ["title" => "Cesta de Café", "price" => 380.00, "description" => "Arranjo de girassol, mini croissants, mini pães de queijo e carolinas"],
-        ["title" => "Cesta de Café com girassol", "price" => 380.00, "description" => "Arranjo de girassol, Frutas, Torrada, Sucrilhos, Pão francês, Frios, Suco, Iogurte e Cappuccino"],
-        ["title" => "Vinho Reservado Carmenere", "price" => 100.00, "description" => "Garrafa de Vinho Concha y Toro Reservado Carmenere 750ml"],
-        ["title" => "Kit maternidade", "price" => 530.00, "description" => "1 mini orquídea, Colônia, Óleo, Shampoo, Pomada, Lencinho em Cesta de vime"],
-        ["title" => "Kit 2 Rosas e Mini Ferreiro Rocher", "price" => 80.00, "description" => "2 rosas colombianas vermelhas e Ferrero Rocher 50g"],
-        ["title" => "Buquê com 24 rosas nacionais", "price" => 360.00, "description" => "Buquê volumoso com 24 rosas nacionais"],
-        ["title" => "Box com Girassol e Chandon", "price" => 300.00, "description" => "Arranjo de Girassol, Chandon Baby, Balão estrela e Ferrero Rocher 100g"],
-        ["title" => "Buquê com Rosa e astromélias", "price" => 300.00, "description" => "12 Rosas nacionais vermelhas e 6 astromélias"],
-        ["title" => "Buquê e Ferreiro Rocher", "price" => 280.00, "description" => "Buquê com 12 Rosas vermelhas nacionais e Ferrero Rocher 150g"],
-        ["title" => "Cesta com Rosas e Chandon", "price" => 400.00, "description" => "Arranjo com Rosas colombianas, Plaquinha, Caixa especial e Ferrero Rocher 150g"],
-        ["title" => "Buquê com 3 lírios", "price" => 210.00, "description" => "Buquê elegante com 3 galhos de lírios abertos"],
-        ["title" => "Cesta com Kalandiva", "price" => 180.00, "description" => "Flor Kalandiva em cesta decorada"],
-        ["title" => "Box de Flores", "price" => 380.00, "description" => "6 Rosas brancas, 6 Rosas cor de rosa, 8 astromélias e Cachepô rosa"],
-        ["title" => "Buquê de Rosas com astromelias", "price" => 350.00, "description" => "6 Rosas Pink colombianas e 7 astromélias brancas"],
-        ["title" => "Buque de gerberas colorida", "price" => 480.00, "description" => "6 rosas colombianas pink, boca de leão, lírio rosa, gérberas e margaridas"],
-        ["title" => "Buquê de Flores Silvestres", "price" => 380.00, "description" => "8 astromélias coloridas, 10 margaridas, 4 hortênsias, gérberas e lírio"],
-        ["title" => "Buquê com 20 Rosas Colombianas", "price" => 650.00, "description" => "20 rosas colombianas vermelhas com folhagem de ruscos"],
-        ["title" => "Buquê Amor Vibrante", "price" => 260.00, "description" => "8 Rosas Colombianas vermelhas e 6 astromélias vermelhas"],
-        ["title" => "Buquê com 24 Rosas importadas", "price" => 600.00, "description" => "24 Rosas colombianas vermelhas em embalagem de gala"],
-        ["title" => "Nutella P", "price" => 30.00, "description" => "Pote de Nutella 140g"],
-        ["title" => "Buquê com Lírios coloridos", "price" => 380.00, "description" => "5 galhos de lírios coloridos e 4 astromélias coloridas"],
-        ["title" => "Espumante Rose Monte Pascoal", "price" => 60.00, "description" => "Garrafa Baby Espumante Rosé Monte Pascoal"],
-        ["title" => "Buquê Flores Silvestre", "price" => 180.00, "description" => "3 crisântemos lilás, 5 galhos de eucalipto e 4 boca de leão"],
-        ["title" => "Arranjo grande com astromelias rosas", "price" => 280.00, "description" => "20 galhos de astromélias rosas em Vaso de vidro"],
-        ["title" => "Buquê de Rosas Manipuladas", "price" => 210.00, "description" => "7 Rosas colombianas manipuladas com folhagem e tango"],
-        ["title" => "Urso Grande", "price" => 350.00, "description" => "Urso de pelúcia gigante (40cm x 45cm)"],
-        ["title" => "Arranjo Rosa", "price" => 300.00, "description" => "6 Rosas Pink, 6 astromélias rosa, 8 crisântemos e hortênsia em Box"],
-        ["title" => "Box com 12 rosas nacionais", "price" => 220.00, "description" => "12 rosas vermelhas nacionais em Box parda comprida"],
-        ["title" => "Vaso de vidro", "price" => 150.00, "description" => "Vaso de cristal trabalhado para arranjos"],
-        ["title" => "Cesta", "price" => 320.00, "description" => "Arranjo com 2 rosas colombianas, Urso P e Ferrero Collection em Cesta de vime"],
-        ["title" => "Buquê Gerberas e Rosas Brancas", "price" => 250.00, "description" => "Gérberas rosa/vermelha, 6 Rosas brancas e 3 Hortênsias"],
-        ["title" => "Box Mãe", "price" => 400.00, "description" => "Bujudinho com 12 rosas coloridas, Balão rosé, Pelúcia de coração, Espumante e Ferrero 150g"],
-        ["title" => "Cesta com Lirio e espumante", "price" => 380.00, "description" => "1 Lírio plantado, Ferrero Rocher 150g, Mini espumante rosé e Caixa decorada"],
-        ["title" => "Orquidea Phale média", "price" => 250.00, "description" => "Orquídea Phalaenopsis de porte médio"],
-        ["title" => "Arranjo com rosas", "price" => 800.00, "description" => "7 rosas manipuladas, 4 galhos de lírios rosas, 6 hortênsias em Vaso de vidro"],
-        ["title" => "Buquê Angélica", "price" => 200.00, "description" => "Buquê com 10 gérberas e bombons Rafaello"],
-        ["title" => "Buquê com 40 rosas colombianas", "price" => 950.00, "description" => "40 botões de rosas colombianas vermelhas em embalagem luxo"],
-        ["title" => "Buquê Encanto Inesquecível", "price" => 600.00, "description" => "10 rosas brancas, 8 gérberas, 11 margaridas, 2 lírios e 12 astromélias"],
-        ["title" => "Buquê", "price" => 180.00, "description" => "1 lírio, 3 cravinas, 1 gérbera, 1 lisianthus e eucalipto em Kraft Cru"],
-        ["title" => "Arranjo Statis", "price" => 300.00, "description" => "Anastasia roxa, boca de leão, gérberas e lisianthus em Caixa kraft"],
-        ["title" => "Buquê com 24 rosas colombianas", "price" => 700.00, "description" => "12 rosas vermelhas e 12 rosas brancas colombianas"],
-        ["title" => "Arranjo com 2 Rosas Colombiana", "price" => 90.00, "description" => "Arranjo delicado com 2 Rosas Colombianas"],
-        ["title" => "Arranjo com 3 rosas brancas", "price" => 200.00, "description" => "3 rosas colombianas brancas em embalagem branca"],
-        ["title" => "Arranjo Pink de Rosas e Astromelia", "price" => 350.00, "description" => "10 Rosas nacionais Pink e 7 astromélias rosa em Vaso de vidro"],
-        ["title" => "Arranjo com 3 orquídeas pink", "price" => 1200.00, "description" => "3 orquídeas pink selecionadas em vaso grande"],
-        ["title" => "Buquê Jasmine", "price" => 300.00, "description" => "1 lírio rosa, 6 galhos de lisianthus e 10 astromélias roxas"],
-        ["title" => "Arranjo de Rosa Colombiana", "price" => 70.00, "description" => "Arranjo individual de Rosa Colombiana"],
-        ["title" => "Kit Amor Perfeito", "price" => 220.00, "description" => "1 Arranjo de Rosa, Espumante rosé, KitKat e Suflair em Caixa kraft"],
-        ["title" => "Buquê Primeira", "price" => 200.00, "description" => "5 rosas claras, 5 rosas brancas e 6 astromélias"],
-        ["title" => "Buquê de Rosa Branca nacional", "price" => 240.00, "description" => "12 Rosas Nacionais brancas com folhagem verde"],
-        ["title" => "Arranjo no vaso de vidro", "price" => 450.00, "description" => "Arranjo misto luxuoso em Vaso de cristal"],
-        ["title" => "Arranjo", "price" => 250.00, "description" => "2 gérberas laranjas, 1 lírio amarelo, 3 margaridas e 6 astromélias"],
-        ["title" => "Cesta com Arranjo e chocolate", "price" => 200.00, "description" => "Arranjo com Rosa colombiana, Ferrero Rocher e Cestinha"],
-        ["title" => "Buquê com 12 Rosas e gypsophila", "price" => 260.00, "description" => "12 rosas vermelhas nacionais e 2 galhos de gypsofila"],
-        ["title" => "Arranjo de Rosas", "price" => 220.00, "description" => "12 Rosas nacionais brancas em Vaso de acrílico verde"],
-        ["title" => "Buquê de flores finas", "price" => 100.00, "description" => "3 astromélias coloridas, flores do campo e lisianthus"],
-        ["title" => "Buquê com Cravinas Coloridas", "price" => 150.00, "description" => "10 galhos de cravinas em papel rosa e laço de corda"],
-        ["title" => "Buquê com 10 Rosas Nacional", "price" => 200.00, "description" => "10 Rosas nacionais vermelhas com folhagem verde"],
-        ["title" => "Arranjo de Rosas e Lirio", "price" => 400.00, "description" => "7 Rosas colombianas e 2 Lírios amarelos em Cachepô"],
-        ["title" => "Bujudinho de Rosa e Girasol", "price" => 250.00, "description" => "5 Rosas vermelhas colombianas e 4 girassóis"],
-        ["title" => "Arranjo Rose", "price" => 380.00, "description" => "15 Rosas nacionais Cor de Rosa em Vaso de vidro"],
-        ["title" => "Buque com girassois", "price" => 150.00, "description" => "3 girassóis, eucaliptos e gypso"],
-        ["title" => "Buquê de 60 rosas colombianas", "price" => 1500.00, "description" => "60 rosas colombianas vermelhas em embalagem de luxo"],
-        ["title" => "Orquídea Branca Cascata", "price" => 350.00, "description" => "Orquídea branca tipo cascata (75cm)"],
-        ["title" => "Buquê com 18 rosas nacionais", "price" => 360.00, "description" => "Buquê com 18 Rosas nacionais vermelhas"],
-        ["title" => "Ferreiro Rocher 150g", "price" => 70.00, "description" => "Caixa de bombons Ferrero Rocher 150g"],
-        ["title" => "Arranjo Branco com Flores Finas", "price" => 215.00, "description" => "Boca de Leão branca, hortênsias, astromélias e lisiantus em Vaso de vidro"],
-        ["title" => "Arranjo de Rosas e Astromélia branca", "price" => 250.00, "description" => "6 Rosas colombianas vermelhas e 6 astromélias brancas"]
+        ["title" => "Buque com 12 Colombianas", "price" => "BRL 300,00", "description" => "Buquê de 12 Rosas Colombianas", "image" => "001-buque-com-12-colombianas.jpg"],
+        ["title" => "Buquê com rosas colombianas", "price" => "BRL 320,00", "description" => "12 Rosas colombianas Folhagem verde e gypsofila Embalagem kraft e laço branco", "image" => "002-buque-com-rosas-colombianas.jpg"],
+        ["title" => "Buque de Rosas pink colombiana", "price" => "BRL 320,00", "description" => "12 rosas colombianas Folhagem verde e tango Embalagem e laço rosa", "image" => "003-buque-de-rosas-pink-colombiana.jpg"],
+        ["title" => "Cesta com Chambinho do Amor", "price" => "BRL 350,00", "description" => "Cesta especial recheada de carinho com rosas e mimos", "image" => "004-cesta-com-chambinho-do-amor.jpg"],
+        ["title" => "Cesta com Rosa e Urso", "price" => "BRL 320,00", "description" => "Arranjo de Rosa Colombiana Urso pequeno Ferreiro Rocher 100g Cesta", "image" => "005-cesta-com-rosa-e-urso.jpg"],
+        ["title" => "Kit dia dos namorados", "price" => "BRL 1.300,00", "description" => "1 buque com 12 rosas colombianas vermelhas + gypso 1 box de 6 rosas e 4 astromelias brancas e gypso 1 pacote de pétalas 1 urso médio 1 Chandon G 1 cartão de amor G Buque de balões (3 corações M e 2 pequenos)", "image" => "006-kit-dia-dos-namorados.jpg"],
+        ["title" => "Buquê com 15 rosas", "price" => "BRL 300,00", "description" => "15 rosas nacionais", "image" => "007-buque-com-15-rosas.jpg"],
+        ["title" => "Buquê com 15 Rosas amarelas", "price" => "BRL 300,00", "description" => "Buquê com 15 Rosas amarelas", "image" => "008-buque-com-15-rosas-amarelas.jpg"],
+        ["title" => "Buquê com Rosas Rosé", "price" => "BRL 240,00", "description" => "12 Rosas nacionais cor de rosa", "image" => "009-buque-com-rosas-rose.jpg"],
+        ["title" => "Buquê Lily", "price" => "BRL 250,00", "description" => "1 galhos de lírios rosa e 1 lírio branco 12 astromelias coloridas Folhagem e lirios", "image" => "010-buque-lily.jpg"],
+        ["title" => "Buque de Mix de Flores", "price" => "BRL 580,00", "description" => "4 Rosas Colombianas 3 galhos de lirios coloridos 10 astromélias 4 gerbera colorida 4 Hortensia", "image" => "011-buque-de-mix-de-flores.jpg"],
+        ["title" => "Buquê rosa", "price" => "BRL 280,00", "description" => "5 Rosas cor de rosa 5 rosa amarela 4 astromelias Rosa 4 amarela 4 hortênsia", "image" => "012-buque-rosa.jpg"],
+        ["title" => "Cesta de café", "price" => "BRL 400,00", "description" => "Arranjo com 4 gerberas vermelhas folhagem verde ruscos e junto. Torrada Toddynho Pão maçã, uva, mamão Cereal chá geleia Bolo Bolacha waffer, Bolacha salgada café e açúcar", "image" => "013-cesta-de-cafe.jpg"],
+        ["title" => "Cesta de café com rosa", "price" => "BRL 380,00", "description" => "Arranjo de rosa Torrada Sucrilhos Maça Uva Mamão Sache de Cappuccino Suco Iorgute Requeijão 4 fatias de queijo, 4 fatias de presunto Pão francês Bisnaga 4 paes de queijo", "image" => "014-cesta-de-cafe-com-rosa.jpg"],
+        ["title" => "Cesta de Café Premium", "price" => "BRL 400,00", "description" => "Arranjo de rosa Torrada Sucrilhos Maça Sache de Cappuccino Suco Iorgute Requeijão Nutella 4 fatias de queijo, 4 fatias de presunto Pão francês Bisnaga 4 paes de queijo 4 croissant 3 Carolina", "image" => "015-cesta-de-cafe-premium.jpg"],
+        ["title" => "Arranjo de Rosas e Lírio", "price" => "BRL 350,00", "description" => "4 Rosas colombianas vermelhas 2 galhos de Lirios Folhagem verde e ruscos", "image" => "016-arranjo-de-rosas-e-lirio.jpg"],
+        ["title" => "Arranjo com Rosas vermelhas", "price" => "BRL 450,00", "description" => "18 rosas nacionais vermelhas Folhagem de pit Vaso de vidro", "image" => "017-arranjo-com-rosas-vermelhas.jpg"],
+        ["title" => "Arranjo com 3 Rosas Colombianas", "price" => "BRL 150,00", "description" => "3 Rosas Colombianas aberta a mão Folhagem verde e tango Embalagem", "image" => "018-arranjo-com-3-rosas-colombianas.jpg"],
+        ["title" => "Ferreiro Rocher 50g", "price" => "BRL 25,00", "description" => "Caixa de bombons Ferreiro Rocher 50g", "image" => "019-ferreiro-rocher-50g.jpg"],
+        ["title" => "Ferreiro Rocher 100g", "price" => "BRL 60,00", "description" => "Ferreiro Rocher 100g", "image" => "020-ferreiro-rocher-100g.jpg"],
+        ["title" => "Ferreiro Rocher Collection 77g", "price" => "BRL 65,00", "description" => "Ferreiro Rocher Collection 77g", "image" => "021-ferreiro-rocher-collection-77g.jpg"],
+        ["title" => "Buque de girassol", "price" => "BRL 150,00", "description" => "6 girassóis Folhagem verde e tango Kraft e laço", "image" => "022-buque-de-girassol.jpg"],
+        ["title" => "Buquê de Girassol e Astromélias", "price" => "BRL 200,00", "description" => "6 girassóis 4 astromelias brancas", "image" => "023-buque-de-girassol-e-astromelias.jpg"],
+        ["title" => "Buquê com Rosas e Girassóis", "price" => "BRL 450,00", "description" => "8 Rosas Colombianas manipuladas 8 girassóis", "image" => "024-buque-com-rosas-e-girassois.jpg"],
+        ["title" => "Bujudinho de Astromélias coloridas", "price" => "BRL 130,00", "description" => "9 astromelias coloridas Folhagem de tango Vaso de vidro Laço (Cerca de 25cm)", "image" => "025-bujudinho-de-astromelias-coloridas.jpg"],
+        ["title" => "Arranjo de flores", "price" => "BRL 280,00", "description" => "Lirio (verificar cores) 2 gerberas 4 Rosas 4 flores do campo 2 cravina Rosa 4 astromelias Box", "image" => "026-arranjo-de-flores.jpg"],
+        ["title" => "Arranjo de Flores Finas", "price" => "BRL 350,00", "description" => "1 Lirio Branco 2 gerberas 6 Rosas 4 galhos de crisântemos coloridas 6 astromelias coloridas 2 lisianthus Folhagem verde Vaso de vidro", "image" => "027-arranjo-de-flores-finas.jpg"],
+        ["title" => "Emoji pelúcia", "price" => "BRL 40,00", "description" => "Cada", "image" => "028-emoji-pelucia.jpg"],
+        ["title" => "Coração de pelúcia", "price" => "BRL 45,00", "description" => "13cm", "image" => "029-coracao-de-pelucia.jpg"],
+        ["title" => "Urso p", "price" => "BRL 70,00", "description" => "Mini urso 18cm", "image" => "030-urso-p.jpg"],
+        ["title" => "Orquidea", "price" => "BRL 450,00", "description" => "Orquídea Phalaenopsis selecionada", "image" => "031-orquidea.jpg"],
+        ["title" => "Arranjo com 3 orquideas brancas", "price" => "BRL 1.400,00", "description" => "3 orquideas brancas cascatas Vaso de vidro", "image" => "032-arranjo-com-3-orquideas-brancas.jpg"],
+        ["title" => "Orquídea pink", "price" => "BRL 350,00", "description" => "Orquídea cor de rosa vibrante", "image" => "033-orquidea-pink.jpg"],
+        ["title" => "Begonia", "price" => "BRL 150,00", "description" => "Planta Begônia floridade", "image" => "034-begonia.jpg"],
+        ["title" => "Lirio rosa", "price" => "BRL 150,00", "description" => "Plantado", "image" => "035-lirio-rosa.jpg"],
+        ["title" => "Lirio amarelo", "price" => "BRL 150,00", "description" => "Lírio amarelo em vaso", "image" => "036-lirio-amarelo.jpg"],
+        ["title" => "Mini Orquidea Branca", "price" => "BRL 250,00", "description" => "Cerca de 45cm", "image" => "037-mini-orquidea-branca.jpg"],
+        ["title" => "Mini orquidea pink", "price" => "BRL 250,00", "description" => "(Imagem ilustrativa)", "image" => "038-mini-orquidea-pink.jpg"],
+        ["title" => "Arranjo com mini orquídea brancas", "price" => "BRL 700,00", "description" => "4 vasos de mini orquídeas brancas Vaso de vidro Casca", "image" => "039-arranjo-com-mini-orquidea-brancas.jpg"],
+        ["title" => "Violeta na cesta", "price" => "BRL 70,00", "description" => "Vaso de violeta na cesta", "image" => "040-violeta-na-cesta.jpg"],
+        ["title" => "Kit Maternidade Clássico", "price" => "BRL 380,00", "description" => "Arranjo de astronelias coloridas (opções com 1 cor só) Urso Cesta de vime Colônia Lencinho Pomada Embalagem e laço", "image" => "041-kit-maternidade-classico.jpg"],
+        ["title" => "Kit maternidade Premium", "price" => "BRL 500,00", "description" => "1 mini orquídea Urso p Colônia Lencinho Pomada Creme de hidratação Embalagem e laço", "image" => "042-kit-maternidade-premium.jpg"],
+        ["title" => "Arranjo com Chocolate", "price" => "BRL 130,00", "description" => "Arranjo floral acompanhado de caixa de chocolates", "image" => "043-arranjo-com-chocolate.jpg"],
+        ["title" => "Rosa e Ferrero 50g", "price" => "BRL 50,00", "description" => "1 rosa colombiana Ferreiro rocher 50g", "image" => "044-rosa-e-ferrero-50g.jpg"],
+        ["title" => "Girassol Solidário com Ferreiro Collection", "price" => "BRL 90,00", "description" => "Girassol com caixa Ferrero Collection", "image" => "045-girassol-solidario-com-ferreiro-collection.jpg"],
+        ["title" => "Buque de tulipas rosa", "price" => "BRL 350,00", "description" => "10 tulipas, ruscus e gypso Embalagem papel jornal (Verificar cores disponíveis)", "image" => "046-buque-de-tulipas-rosa.jpg"],
+        ["title" => "Buque com tulipas e rosas inglesas", "price" => "BRL 680,00", "description" => "20 tulipas rosas 3 rosas inglesas Gypso Ruscos", "image" => "047-buque-com-tulipas-e-rosas-inglesas.jpg"],
+        ["title" => "Poinssetia", "price" => "BRL 100,00", "description" => "35cm-40cm", "image" => "048-poinssetia.jpg"],
+        ["title" => "Kit Natalino", "price" => "BRL 180,00", "description" => "Poinsettia Pinguim natal Cesta de vime", "image" => "049-kit-natalino.jpg"],
+        ["title" => "Kit Natal", "price" => "BRL 180,00", "description" => "Pinheiro Poinsettia Cesta de vime", "image" => "050-kit-natal.jpg"],
+        ["title" => "Cesta de Café", "price" => "BRL 380,00", "description" => "Arranjo de girassol 4 mini croissant 4 mini pão de queijo 4 Carolina", "image" => "051-cesta-de-cafe-1.jpg"],
+        ["title" => "Cesta de Café com girassol", "price" => "BRL 380,00", "description" => "Arranjo de girassol Mamão Maça Uva Torrada Sucrilhos Pão francês Bisnaga 4 paes de queijo Frios 4 fatias queijo, 4 fatias de presunto Suco Iorgute Sache de Cappuccino Cesta de vime Embalagem e laço", "image" => "052-cesta-de-cafe-com-girassol.jpg"],
+        ["title" => "Vinho Reservado Carmenere", "price" => "BRL 100,00", "description" => "Vinho Concha y Toro Reservado Carmenere 750ml", "image" => "053-vinho-reservado-carmenere.jpg"],
+        ["title" => "Kit maternidade", "price" => "BRL 530,00", "description" => "1 mini orquídea (temos outras cores, consultar) Colônia Óleo Shampoo Pomada Lencinho Cesta de vime Embalagem", "image" => "054-kit-maternidade.jpg"],
+        ["title" => "Kit 2 Rosas e Mini Ferreiro Rocher", "price" => "BRL 80,00", "description" => "2 rosas colombianas vermelhas Ferreiro Rocher 50g", "image" => "055-kit-2-rosas-e-mini-ferreiro-rocher.jpg"],
+        ["title" => "Buquê com 24 rosas nacionais", "price" => "BRL 360,00", "description" => "Buquê com 24 rosas nacionais", "image" => "056-buque-com-24-rosas-nacionais.jpg"],
+        ["title" => "Box com Girassol e Chandon", "price" => "BRL 300,00", "description" => "Arranjo de Girassol Chandon Baby Balão estrela Ferreiro Roche 100g Box verde com tampa Embalagem e laço", "image" => "057-box-com-girassol-e-chandon.jpg"],
+        ["title" => "Buquê com Rosa e astromélias", "price" => "BRL 300,00", "description" => "12 Rosas nacionais vermelhas 6 astromelias", "image" => "058-buque-com-rosa-e-astromelias.jpg"],
+        ["title" => "Buquê e Ferreiro Rocher", "price" => "BRL 280,00", "description" => "Buquê com 12 Rosas vermelhas nacional Ferreiro Rocher 150g", "image" => "059-buque-e-ferreiro-rocher.jpg"],
+        ["title" => "Cesta com Rosas e Chandon", "price" => "BRL 400,00", "description" => "Arranjo com Rosas colombianas Plaquinha de coração Caixa especialmente para você! Ferreiro Rocher 150g", "image" => "060-cesta-com-rosas-e-chandon.jpg"],
+        ["title" => "Buquê com 3 lírios", "price" => "BRL 210,00", "description" => "Buquê de 3 lírios", "image" => "061-buque-com-3-lirios.jpg"],
+        ["title" => "Cesta com Kalandiva", "price" => "BRL 180,00", "description" => "Cesta com flor Kalandiva", "image" => "062-cesta-com-kalandiva.jpg"],
+        ["title" => "Box de Flores", "price" => "BRL 380,00", "description" => "6 Rosas brancas 6 Rosas cor de rosa 4 astromelias brancas 4 astromelias Rosas Folhagem verde Roxinha Cachepo Rosa com tampa e laço", "image" => "063-box-de-flores.jpg"],
+        ["title" => "Buquê de Rosas com astromelias", "price" => "BRL 350,00", "description" => "6 Rosas Pink colombiana 7 astromelias brancas Folhagem verde e gypsophila Embalagem e laço", "image" => "064-buque-de-rosas-com-astromelias.jpg"],
+        ["title" => "Buque de gerberas colorida", "price" => "BRL 480,00", "description" => "6 rosas colombianas pink 3 boca de leão rosa 1 lírio rosa 3 gerberas rosa 4 margaridas lilás 4 astromelias rosa 3 lisianthus rosa", "image" => "065-buque-de-gerberas-colorida.jpg"],
+        ["title" => "Buquê de Flores Silvestres", "price" => "BRL 380,00", "description" => "8 astromelias coloridas 10 margaridas coloridas 4 hortênsia 4 gerberas 1 lirio", "image" => "066-buque-de-flores-silvestres.jpg"],
+        ["title" => "Buquê com 20 Rosas Colombianas", "price" => "BRL 650,00", "description" => "20 rosas colombianas vermelhas Folhagem de ruscos em volta Embalagem e laço", "image" => "067-buque-com-20-rosas-colombianas.jpg"],
+        ["title" => "Buquê Amor Vibrante", "price" => "BRL 260,00", "description" => "8 Rosas Colombianas vermelhas 6 astromelias vermelhas Gypsofila Folhagem verde pit Embalagem e laço", "image" => "068-buque-amor-vibrante.jpg"],
+        ["title" => "Buquê com 24 Rosas importadas", "price" => "BRL 600,00", "description" => "24 Rosas colombinas vermelhas Embalagem Laço", "image" => "069-buque-com-24-rosas-importadas.jpg"],
+        ["title" => "Nutella P", "price" => "BRL 30,00", "description" => "Nutella pote 140g", "image" => "070-nutella-p.jpg"],
+        ["title" => "Buquê com Lírios coloridos", "price" => "BRL 380,00", "description" => "5 galhos de lírios coloridos 4 astromelias coloridas Folhagem Embalagem + laço", "image" => "071-buque-com-lirios-coloridos.jpg"],
+        ["title" => "Espumante Rose Monte Pascoal", "price" => "BRL 60,00", "description" => "Baby", "image" => "072-espumante-rose-monte-pascoal.jpg"],
+        ["title" => "Buquê Flores Silvestre", "price" => "BRL 180,00", "description" => "3 crisântemo grande lilás 5 galhos de eucalipto 4 boca de leão Sempre viva Embalagem e laço Folhagem verde", "image" => "073-buque-flores-silvestre.jpg"],
+        ["title" => "Arranjo grande com astromelias rosas", "price" => "BRL 280,00", "description" => "20 galhos de astromelias rosas Folhagem verde Vaso de vidrolaço de cetim rosa", "image" => "074-arranjo-grande-com-astromelias-rosas.jpg"],
+        ["title" => "Buquê de Rosas Manipuladas", "price" => "BRL 210,00", "description" => "7 Rosas colombianas manipuladas Folhagem verde e tango Embalagem e tango (Naturais)", "image" => "075-buque-de-rosas-manipuladas.jpg"],
+        ["title" => "Urso Grande", "price" => "BRL 350,00", "description" => "Aproximadamente 40cm×45cm", "image" => "076-urso-grande.jpg"],
+        ["title" => "Arranjo Rosa", "price" => "BRL 300,00", "description" => "6 Rosas Pink 6 astromelias Rosa 8 crisântemos Rosa 4 hortênsia Box", "image" => "077-arranjo-rosa.jpg"],
+        ["title" => "Box com 12 rosas nacionais", "price" => "BRL 220,00", "description" => "Buque com 12 rosas vermelhas nacional Folhagem verde e tango Box parda comprida", "image" => "078-box-com-12-rosas-nacionais.jpg"],
+        ["title" => "Vaso de vidro", "price" => "BRL 150,00", "description" => "Vaso de vidro para arranjos", "image" => "079-vaso-de-vidro.jpg"],
+        ["title" => "Cesta", "price" => "BRL 320,00", "description" => "Arranjo com 2 rosas colombianas Urso P Ferreiro Collection Cesta de vime", "image" => "080-cesta.jpg"],
+        ["title" => "Buquê Gerberas e Rosas Brancas", "price" => "BRL 250,00", "description" => "Buquê com Gerberas: 2 rosa e 2 vermelhas 6 Rosas brancas 3 Hortênsia Astromelias: 2 vermelhas, 2 amarelas, 2 rosas", "image" => "081-buque-gerberas-e-rosas-brancas.jpg"],
+        ["title" => "Box Mãe", "price" => "BRL 400,00", "description" => "Bujudinho com 12 rosas coloridas e gypso no vidro Balão rosé Pelúcia de coração Espumante rosé Ferreiro Rocher 150g Box personalizada Dia das mães", "image" => "082-box-mae.jpg"],
+        ["title" => "Cesta com Lirio e espumante", "price" => "BRL 380,00", "description" => "1 Lirio plantado Plaquinha Ferreiro Rocher 150g Mini espumante rosé Caixa", "image" => "083-cesta-com-lirio-e-espumante.jpg"],
+        ["title" => "Orquidea Phale média", "price" => "BRL 250,00", "description" => "Orquídea Phalaenopsis média", "image" => "084-orquidea-phale-media.jpg"],
+        ["title" => "Arranjo com rosas", "price" => "BRL 800,00", "description" => "Arranjo com 7 rosas manipuladas 4 galhos de lírios rosas 6 hortensias Gypsofila Vaso de vidro", "image" => "085-arranjo-com-rosas.jpg"],
+        ["title" => "Buquê Angélica", "price" => "BRL 200,00", "description" => "Buquê com 10 gérberas Rafaello", "image" => "086-buque-angelica.jpg"],
+        ["title" => "Buquê com 40 rosas colombianas", "price" => "BRL 950,00", "description" => "40 botões de rosas Embalagem e laço personalizado Surpreenda seu amor!", "image" => "087-buque-com-40-rosas-colombianas.jpg"],
+        ["title" => "Buquê Encanto Inesquecível", "price" => "BRL 600,00", "description" => "10 rosas brancas 5 gerberas rosas 3 gerbras amarelas 4 Margaridas amarelas 4 margaridas lilás 3 margaridas brancas 2 lírio vermelho 12 astromelias coloridas", "image" => "088-buque-encanto-inesquecivel.jpg"],
+        ["title" => "Buquê", "price" => "BRL 180,00", "description" => "1 lirio 3 cravinas 1 gerbera 1 lisianthus Eucalipto 2 anastásias Folhagem verde e tango Kraft Cru e Laço de corda", "image" => "089-buque.jpg"],
+        ["title" => "Arranjo Statis", "price" => "BRL 300,00", "description" => "2 Anastasia roxa 3 boca de leão 2 gerberas 4 astromelias brancas 3 lisianthus 1 galho de Eucalipto Caixa kraft Lado cetim Embalagem rosé", "image" => "090-arranjo-statis.jpg"],
+        ["title" => "Buquê com 24 rosas colombianas", "price" => "BRL 700,00", "description" => "12 rosas vermelhas 12 rosas brancas colombianas", "image" => "091-buque-com-24-rosas-colombianas.jpg"],
+        ["title" => "Arranjo com 2 Rosas Colombiana", "price" => "BRL 90,00", "description" => "Arranjo com 2 Rosas Colombiana", "image" => "092-arranjo-com-2-rosas-colombiana.jpg"],
+        ["title" => "Arranjo com 3 rosas brancas", "price" => "BRL 200,00", "description" => "3 rosas colombianas brancas folhagem verde embalagem brancas", "image" => "093-arranjo-com-3-rosas-brancas.jpg"],
+        ["title" => "Arranjo Pink de Rosas e Astromelia", "price" => "BRL 350,00", "description" => "10 Rosas nacionais Pink 7 astromélias cor de rosa Folhagem verde e fantasia Vaso de vidro e laço", "image" => "094-arranjo-pink-de-rosas-e-astromelia.jpg"],
+        ["title" => "Arranjo com 3 orquídeas pink", "price" => "BRL 1.200,00", "description" => "3 orquídeas pink selecionadas", "image" => "095-arranjo-com-3-orquideas-pink.jpg"],
+        ["title" => "Buquê Jasmine", "price" => "BRL 300,00", "description" => "1 lírio rosa 6 galhos de lisianthus Statis roxinha + Caspia 10 astromelias roxa Embalagem e laço", "image" => "096-buque-jasmine.jpg"],
+        ["title" => "Arranjo de Rosa Colombiana", "price" => "BRL 70,00", "description" => "Arranjo individual de Rosa Colombiana", "image" => "097-arranjo-de-rosa-colombiana.jpg"],
+        ["title" => "Kit Amor Perfeito", "price" => "BRL 220,00", "description" => "1 Arranjo de Rosa 1 Plaquinha 1 Espumante rosé 2 KitKat 2 Suflair Caixa kraft", "image" => "098-kit-amor-perfeito.jpg"],
+        ["title" => "Buquê Primeira", "price" => "BRL 200,00", "description" => "5 rosas claras 5 rosas brancas 3 astromelias rosa 3 astronelias brancas Folhagem verde", "image" => "099-buque-primeira.jpg"],
+        ["title" => "Buquê de Rosa Branca nacional", "price" => "BRL 240,00", "description" => "12 Rosas Nacional brancas Folhagem verde e tango", "image" => "100-buque-de-rosa-branca-nacional.jpg"],
+        ["title" => "Arranjo no vaso de vidro", "price" => "BRL 450,00", "description" => "Arranjo no vaso de vidro", "image" => "101-arranjo-no-vaso-de-vidro.jpg"],
+        ["title" => "Arranjo", "price" => "BRL 250,00", "description" => "2 gerberas laranjas 1 lírio amarelo 3 margaridas 6 astromelias 3 rosas brancas Box", "image" => "102-arranjo.jpg"],
+        ["title" => "Cesta com Arranjo e chocolate", "price" => "BRL 200,00", "description" => "Arranjo com Rosa colombiana Ferreiro Rocher Plaquinha Cestinha", "image" => "103-cesta-com-arranjo-e-chocolate.jpg"],
+        ["title" => "Buquê com 12 Rosas e gypsophila", "price" => "BRL 260,00", "description" => "Buquê com 12 rosas vermelhas nacional 2 galhos de gypsofila Folhagem verde Embalagem", "image" => "104-buque-com-12-rosas-e-gypsophila.jpg"],
+        ["title" => "Arranjo de Rosas", "price" => "BRL 220,00", "description" => "12 Rosas nacionais branca Folhagem verde Vaso de acrílico verde", "image" => "105-arranjo-de-rosas.jpg"],
+        ["title" => "Buquê de flores finas", "price" => "BRL 100,00", "description" => "3 astromelias coloridas 3 galhos de flores do campo 2 Lisianhus 1 gerbera Folhagem verde e tango Embalagem e laço", "image" => "106-buque-de-flores-finas.jpg"],
+        ["title" => "Buquê com Cravinas Coloridas", "price" => "BRL 150,00", "description" => "10 galhos de cravinas Folhagens verdes e tango Papel rosa + papel comeia rosé Laço de corda", "image" => "107-buque-com-cravinas-coloridas.jpg"],
+        ["title" => "Buquê com 10 Rosas Nacional", "price" => "BRL 200,00", "description" => "Buquê com 10 Rosas nacionais vermelhas Folhagem verde e tango", "image" => "108-buque-com-10-rosas-nacional.jpg"],
+        ["title" => "Arranjo de Rosas e Lirio", "price" => "BRL 400,00", "description" => "7 Rosas colombianas 2 Lirios amarelo Folhagem Verde Cachepo", "image" => "109-arranjo-de-rosas-e-lirio-1.jpg"],
+        ["title" => "Bujudinho de Rosa e Girasol", "price" => "BRL 250,00", "description" => "5 Rosas vermelhas colombiana 4 girassol Folhagem verde e aspargo 3 galhos de ruscos", "image" => "110-bujudinho-de-rosa-e-girasol.jpg"],
+        ["title" => "Arranjo Rose", "price" => "BRL 380,00", "description" => "15 Rosas nacionais Cor de Rosa, Folhagem verde Vaso de vidro Laço de cetim", "image" => "111-arranjo-rose.jpg"],
+        ["title" => "Buque com girassois", "price" => "BRL 150,00", "description" => "3 girassol eucaliptos gypso embalagem", "image" => "112-buque-com-girassois.jpg"],
+        ["title" => "Buquê de 60 rosas colombianas", "price" => "BRL 1.500,00", "description" => "60 rosas colombianas Embalagem branca Laço de fita vermelho e branco", "image" => "113-buque-de-60-rosas-colombianas.jpg"],
+        ["title" => "Orquídea Branca Cascata", "price" => "BRL 350,00", "description" => "(Cerca de 75cm)", "image" => "114-orquidea-branca-cascata.jpg"],
+        ["title" => "Buquê com 18 rosas nacionais", "price" => "BRL 360,00", "description" => "Buquê 18 Rosas nacionais vermelha (temos outras cores *consultar*)", "image" => "115-buque-com-18-rosas-nacionais.jpg"],
+        ["title" => "Ferreiro Rocher 150g", "price" => "BRL 70,00", "description" => "Ferreiro Rocher 150g", "image" => "116-ferreiro-rocher-150g.jpg"],
+        ["title" => "Arranjo Branco com Flores Finas", "price" => "BRL 215,00", "description" => "4 Boca de Leão branca 3 hortênsia 4 astromelias 2 Galhos de margaridas 2 galhos de lisiantus Vaso de vidro", "image" => "117-arranjo-branco-com-flores-finas.jpg"],
+        ["title" => "Arranjo de Rosas e Astromélia branca", "price" => "BRL 250,00", "description" => "6 Rosas colombianas vermelhas manipuladas. 6 astromelias brancas Folhagem verde e tango Cachepot e embalagem", "image" => "118-arranjo-de-rosas-e-astromelia-branca.jpg"]
     ];
 
     $inserted = 0;
     $updated = 0;
 
-    foreach ($raw118Products as $idx => $p) {
+    foreach ($raw118Products as $p) {
         $name = trim($p['title']);
-        $price = floatval($p['price']);
+        $rawPrice = str_replace(['BRL', 'R$', ' ', '.'], '', $p['price']);
+        $rawPrice = str_replace(',', '.', $rawPrice);
+        $price = floatval($rawPrice);
         $desc = trim($p['description']);
         $catName = detectCatName($name);
         $catId = $catMap[$catName] ?? 1;
         $slug = makeSlug($name);
-        $imgFile = getBestLocalImage($name, $idx, $localFiles);
+        $imgFile = basename($p['image']);
 
         $stmt = $pdo->prepare("SELECT id FROM products WHERE name = ? OR slug = ?");
         $stmt->execute([$name, $slug]);
@@ -250,18 +207,17 @@ try {
 
     echo "
     <div style='font-family: Arial, sans-serif; max-width: 700px; margin: 50px auto; padding: 35px; background: #FFF5F7; border: 2px solid #D81B60; border-radius: 16px; text-align: center;'>
-        <h1 style='color: #C2185B;'>🌸 100% dos 118 Produtos do WhatsApp Cadastrados!</h1>
-        <p style='font-size: 1.15rem; color: #333; line-height:1.6;'>Todos os 118 buquês, cestas de café da manhã, chocolates Ferrero Rocher, orquídeas cascatas, kits de namorados e arranjos do seu WhatsApp foram cadastrados e vinculados com fotos da pasta <code>assets/uploads/</code>!</p>
+        <h1 style='color: #C2185B;'>🌸 100% dos 118 Produtos Vinculados com Sucesso!</h1>
+        <p style='font-size: 1.15rem; color: #333; line-height:1.6;'>Todos os 118 buquês, cestas de café da manhã, chocolates e kits do WhatsApp foram cadastrados com as imagens numeradas de <code>001-...jpg</code> até <code>118-...jpg</code>!</p>
         <hr style='border: 0; border-top: 1px solid #E0D0D5; margin: 20px 0;'>
         <div style='text-align: left; background: #FFF; padding: 18px; border-radius: 10px; font-size: 1rem; color:#444;'>
-            • Arquivos Locais Detectados em assets/uploads: <strong>" . count($localFiles) . "</strong><br>
-            • Total de Produtos Processados: <strong>" . count($raw118Products) . "</strong><br>
+            • Total de Produtos com Mapeamento Exato: <strong>" . count($raw118Products) . "</strong><br>
             • Novos produtos inseridos: <strong>{$inserted}</strong><br>
             • Produtos atualizados: <strong>{$updated}</strong>
         </div>
         <br>
         <a href='index.php' style='display: inline-block; background: #D81B60; color: #FFF; padding: 15px 36px; border-radius: 30px; text-decoration: none; font-weight: bold; font-size:1.15rem;'>
-            🌸 Ver Catálogo Completo no Site →
+            🌸 Ver Catálogo no Site →
         </a>
     </div>
     ";
