@@ -1,193 +1,229 @@
 <?php
 /**
- * seed_helena_flores.php — Helena Flores
- * Script de 1-Clique para popular e inicializar o catálogo completo Helena Flores no banco de dados.
+ * seed_helena_flores.php — Semeador de Produtos, Banners e Cliente de Teste Helena Flores
  */
-
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/db.php';
 
 header('Content-Type: text/html; charset=utf-8');
 
-echo "<div style='font-family: sans-serif; padding: 25px; max-width: 850px; margin: 20px auto; background: #FFFDFB; border: 2px solid #8B263E; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);'>";
-echo "<h1 style='color: #8B263E; font-family: Georgia, serif;'>🌹 Helena Flores — Semeador de Catálogo & Banners</h1>";
-
 try {
-    // 1. Atualizar ou Inserir Configurações do Site
-    $stmt = $pdo->query("SELECT COUNT(*) FROM settings");
-    if ($stmt->fetchColumn() == 0) {
-        $pdo->exec("INSERT INTO settings (site_name, whatsapp_phone, admin_email, banner_title, banner_subtitle) 
-                    VALUES ('Helena Flores', '5511986727872', 'contato@helenafloresjardins.com.br', 'Helena Flores - Atelier & Floricultura', 'Há mais de 11 anos cultivando emoções nos Jardins em São Paulo')");
-    } else {
-        $pdo->exec("UPDATE settings SET 
-                    site_name = 'Helena Flores', 
-                    whatsapp_phone = '5511986727872',
-                    banner_title = 'Helena Flores - Atelier & Floricultura',
-                    banner_subtitle = 'Há mais de 11 anos cultivando emoções nos Jardins em São Paulo'
-                    WHERE id = 1");
-    }
-    echo "<p style='color: green;'>✅ Configurações da loja atualizadas!</p>";
-
-    // 2. Criar Banners Grandes no Carrossel da Home
-    $pdo->exec("CREATE TABLE IF NOT EXISTS banners (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        image_path VARCHAR(255) NOT NULL,
-        title VARCHAR(100),
-        subtitle VARCHAR(255),
-        link_url VARCHAR(255),
-        display_order INT DEFAULT 0,
-        active TINYINT(1) DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
-
-    $defaultBanners = [
-        [
-            'image_path' => 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=1600&q=80',
-            'title' => 'Helena Flores - Atelier nos Jardins',
-            'subtitle' => 'Buquês de Rosas Colombianas, Cestas Personalizadas e Arranjos de Luxo em SP',
-            'link_url' => '#produtos'
-        ],
-        [
-            'image_path' => 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=1600&q=80',
-            'title' => 'Rosas Colombianas Premium',
-            'subtitle' => 'Seleção exclusiva com 12 a 24 rosas de haste longa e embalagem para presente',
-            'link_url' => '?cat=1'
-        ],
-        [
-            'image_path' => 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=1600&q=80',
-            'title' => 'Cestas & Kits Especiais de Presente',
-            'subtitle' => 'Chocolates nobres, pelúcias carinhosas e vinhos selecionados',
-            'link_url' => '?cat=2'
-        ]
-    ];
-
-    $pdo->exec("TRUNCATE TABLE banners");
-    foreach ($defaultBanners as $b) {
-        $insB = $pdo->prepare("INSERT INTO banners (image_path, title, subtitle, link_url, active) VALUES (?, ?, ?, ?, 1)");
-        $insB->execute([$b['image_path'], $b['title'], $b['subtitle'], $b['link_url']]);
-    }
-    echo "<p style='color: green;'>✅ Banners Grandes Ativados no Carrossel da Home!</p>";
-
-    // 3. Criar Categorias
+    // 1. Ensure Table Structure & Categories
     $categories = [
-        ['name' => 'Rosas Colombianas', 'slug' => 'rosas-colombianas', 'sort' => 1],
-        ['name' => 'Cestas Personalizadas', 'slug' => 'cestas-personalizadas', 'sort' => 2],
-        ['name' => 'Buquês de Luxo', 'slug' => 'buques-de-luxo', 'sort' => 3],
-        ['name' => 'Arranjos & Vasos', 'slug' => 'arranjos-vasos', 'sort' => 4],
-        ['name' => 'KITS & Presentes', 'slug' => 'kits-presentes', 'sort' => 5],
-        ['name' => 'Orquídeas & Plantas', 'slug' => 'orquideas-plantas', 'sort' => 6],
+        ['name' => 'Rosas Colombianas', 'slug' => 'rosas-colombianas', 'sort_order' => 1],
+        ['name' => 'Cestas Personalizadas', 'slug' => 'cestas-personalizadas', 'sort_order' => 2],
+        ['name' => 'Buquês de Luxo', 'slug' => 'buques-de-luxo', 'sort_order' => 3],
+        ['name' => 'Arranjos & Vasos', 'slug' => 'arranjos-e-vasos', 'sort_order' => 4],
+        ['name' => 'KITS & Presentes', 'slug' => 'kits-e-presentes', 'sort_order' => 5],
+        ['name' => 'Orquídeas & Plantas', 'slug' => 'orquideas-e-plantas', 'sort_order' => 6],
     ];
 
     $catMap = [];
     foreach ($categories as $cat) {
-        $stmt = $pdo->prepare("SELECT id FROM categories WHERE slug = ?");
-        $stmt->execute([$cat['slug']]);
-        $existing = $stmt->fetchColumn();
-
-        if (!$existing) {
-            $ins = $pdo->prepare("INSERT INTO categories (name, slug, sort_order) VALUES (?, ?, ?)");
-            $ins->execute([$cat['name'], $cat['slug'], $cat['sort']]);
-            $catMap[$cat['slug']] = $pdo->lastInsertId();
+        $stmt = $pdo->prepare("SELECT id FROM categories WHERE name = ?");
+        $stmt->execute([$cat['name']]);
+        $existing = $stmt->fetch();
+        if ($existing) {
+            $catMap[$cat['name']] = $existing['id'];
         } else {
-            $catMap[$cat['slug']] = $existing;
+            $stmt = $pdo->prepare("INSERT INTO categories (name, slug, sort_order) VALUES (?, ?, ?)");
+            $stmt->execute([$cat['name'], $cat['slug'], $cat['sort_order']]);
+            $catMap[$cat['name']] = $pdo->lastInsertId();
         }
     }
 
-    // 4. Cadastrar Produtos Reais do Catálogo Helena Flores (Incluindo novos Cód 73, 95 e 61)
+    // 2. Real Helena Flores & WhatsApp Catalog Products
     $products = [
         [
-            'cat' => 'buques-de-luxo',
-            'name' => 'Buquê Premium com Mix de Flores (Cód 73)',
-            'slug' => 'buque-premium-mix-de-flores-cod-73',
-            'desc' => '4 Rosas Colombianas, 3 galhos de lírios coloridos, 10 astromélias, 4 gérberas coloridas e folhagens nobres em embalagem especial de presente.',
-            'sku' => 'HF-BUQ-73',
-            'price' => 580.00,
+            'name' => 'Caixa Surpresa com Rosas Colombianas Glam',
+            'sku' => 'HF-001',
+            'category' => 'Rosas Colombianas',
+            'price' => 389.90,
+            'description' => 'Caixa exclusiva cartonada com 18 Rosas Colombianas vermelhas selecionadas e acabamento de cetim de luxo.',
             'image' => 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=800&q=80',
             'featured' => 1
         ],
         [
-            'cat' => 'arranjos-vasos',
-            'name' => 'Arranjo de Astromélia coloridas (Cód 95)',
-            'slug' => 'arranjo-de-astromelia-coloridas-cod-95',
-            'desc' => '20 galhos de astromélias coloridas selecionadas, folhagem verde e vaso de vidro transparente (cerca de 45cm de altura).',
-            'sku' => 'HF-ARR-95',
-            'price' => 280.00,
-            'image' => 'https://images.unsplash.com/photo-1563241527-3004b7be0ffd?w=800&q=80',
-            'featured' => 1
-        ],
-        [
-            'cat' => 'buques-de-luxo',
-            'name' => 'Buquê de Girassol e Astromélias (Cód 61)',
-            'slug' => 'buque-de-girassol-e-astromelias-cod-61',
-            'desc' => 'Um buquê encantador com 6 vibrantes girassóis frescos e 4 delicadas astromélias brancas envoltos em papel kraft especial.',
-            'sku' => 'HF-BUQ-61',
-            'price' => 200.00,
-            'image' => 'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?w=800&q=80',
-            'featured' => 1
-        ],
-        [
-            'cat' => 'rosas-colombianas',
-            'name' => 'Buquê com 12 Colombianas',
-            'slug' => 'buque-com-12-colombianas',
-            'desc' => 'Buquê clássico e sofisticado com 12 Rosas Colombianas Vermelhas de haste longa, embalagem especial de presente e acabamento em laço de cetim.',
-            'sku' => 'HF-BUQ-12COL',
-            'price' => 300.00,
-            'image' => 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=800&q=80',
-            'featured' => 1
-        ],
-        [
-            'cat' => 'rosas-colombianas',
-            'name' => 'Buquê com rosas colombianas',
-            'slug' => 'buque-com-rosas-colombianas-misto',
-            'desc' => '12 Rosas colombianas nobres, folhagem verde refrescante de eucalipto e delicadas gypsofilas (mosquitinho). Embalagem premium.',
-            'sku' => 'HF-BUQ-12MIS',
-            'price' => 320.00,
+            'name' => 'Buquê Partitura Flores do Campo',
+            'sku' => 'HF-002',
+            'category' => 'Buquês de Luxo',
+            'price' => 99.90,
+            'description' => 'Buquê artesanal com margaridas, gérberas e astromélias envolto em embalagem kraft de partitura vintage.',
             'image' => 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=800&q=80',
             'featured' => 1
         ],
         [
-            'cat' => 'cestas-personalizadas',
-            'name' => 'Cesta com Chambinho do Amor',
-            'slug' => 'cesta-com-chambinho-do-amor',
-            'desc' => 'Cesta encantadora de vime contendo Ursinho de Pelúcia macio, rosas colombianas vermelhas frescas e caixa de deliciosos chocolates.',
-            'sku' => 'HF-CST-CHAMB',
-            'price' => 350.00,
-            'image' => 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=800&q=80',
+            'name' => 'Admiração de Astromélias Coloridas no Vaso',
+            'sku' => 'HF-003',
+            'category' => 'Arranjos & Vasos',
+            'price' => 169.90,
+            'description' => 'Arranjo alegre de astromélias coloridas em vaso de vidro transparente com laço de cetim.',
+            'image' => 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=800&q=80',
             'featured' => 1
         ],
         [
-            'cat' => 'cestas-personalizadas',
-            'name' => 'Cesta com Rosa e Urso',
-            'slug' => 'cesta-com-rosa-e-urso',
-            'desc' => 'Arranjo com Rosa Colombiana aveludada, Urso carinhoso pequeno, caixa de bombons Ferrero Rocher e mimo.',
-            'sku' => 'HF-CST-URSO',
-            'price' => 320.00,
+            'name' => 'Buquê de Girassol e Rosas Vermelhas',
+            'sku' => 'HF-004',
+            'category' => 'Buquês de Luxo',
+            'price' => 285.90,
+            'description' => 'Combinação vibrante de 6 girassóis grandes com 12 rosas vermelhas colombianas.',
+            'image' => 'https://images.unsplash.com/photo-1591886960571-74d43a9d4166?w=800&q=80',
+            'featured' => 1
+        ],
+        [
+            'name' => 'Luxuosas Astromélias Coloridas no Vaso',
+            'sku' => 'HF-005',
+            'category' => 'Arranjos & Vasos',
+            'price' => 299.90,
+            'description' => 'Arranjo com mais de 25 galhos de astromélias selecionadas em vaso cilíndrico de cristal.',
+            'image' => 'https://images.unsplash.com/photo-1563241527-3004b7be0ffd?w=800&q=80',
+            'featured' => 1
+        ],
+        [
+            'name' => 'Coração de Bombom e Stitch',
+            'sku' => 'HF-006',
+            'category' => 'KITS & Presentes',
+            'price' => 198.90,
+            'description' => 'Caixa em formato de coração recheada com bombons variados e pelúcia oficial Stitch.',
+            'image' => 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=800&q=80',
+            'featured' => 0
+        ],
+        [
+            'name' => 'Fabulosa Rosa Encantada Vermelha na Cúpula',
+            'sku' => 'HF-007',
+            'category' => 'Rosas Colombianas',
+            'price' => 279.90,
+            'description' => 'Rosa natural preservada em cúpula de vidro ao estilo A Bela e a Fera. Duração de até 5 anos.',
             'image' => 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&q=80',
             'featured' => 1
-        ]
+        ],
+        [
+            'name' => 'Buquê Premium com Mix de Flores (Cód 73)',
+            'sku' => 'COD-73',
+            'category' => 'Buquês de Luxo',
+            'price' => 580.00,
+            'description' => '4 Rosas Colombianas, 3 galhos de lírios, 10 astromélias, 4 gérberas coloridas e folhagens nobres.',
+            'image' => 'https://images.unsplash.com/photo-1567696911980-2eed69a46042?w=800&q=80',
+            'featured' => 1
+        ],
+        [
+            'name' => 'Arranjo de Astromélia coloridas (Cód 95)',
+            'sku' => 'COD-95',
+            'category' => 'Arranjos & Vasos',
+            'price' => 280.00,
+            'description' => '20 galhos de astromélias coloridas em vaso de vidro com laço especial.',
+            'image' => 'https://images.unsplash.com/photo-1508610048659-a06b669e3321?w=800&q=80',
+            'featured' => 1
+        ],
+        [
+            'name' => 'Buquê de Girassol e Astromélias (Cód 61)',
+            'sku' => 'COD-61',
+            'category' => 'Buquês de Luxo',
+            'price' => 200.00,
+            'description' => '6 girassóis vibrantes e 4 astromélias brancas envoltos em papel de presente refinado.',
+            'image' => 'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?w=800&q=80',
+            'featured' => 1
+        ],
     ];
 
-    $count = 0;
+    $productIds = [];
     foreach ($products as $p) {
-        $catId = $catMap[$p['cat']] ?? null;
+        $catId = $catMap[$p['category']] ?? 1;
+        $stmt = $pdo->prepare("SELECT id FROM products WHERE name = ? OR sku = ?");
+        $stmt->execute([$p['name'], $p['sku']]);
+        $existing = $stmt->fetch();
 
-        $stmt = $pdo->prepare("SELECT id FROM products WHERE slug = ?");
-        $stmt->execute([$p['slug']]);
-        if (!$stmt->fetchColumn()) {
-            $ins = $pdo->prepare("INSERT INTO products (category_id, name, slug, description, sku, price, image_path, featured, active, stock_qty) 
-                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 50)");
-            $ins->execute([$catId, $p['name'], $p['slug'], $p['desc'], $p['sku'], $p['price'], $p['image'], $p['featured']]);
-            $count++;
+        if ($existing) {
+            $stmt = $pdo->prepare("UPDATE products SET category_id = ?, price = ?, description = ?, image_path = ?, featured = ?, active = 1 WHERE id = ?");
+            $stmt->execute([$catId, $p['price'], $p['description'], $p['image'], $p['featured'], $existing['id']]);
+            $productIds[] = $existing['id'];
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO products (category_id, name, sku, price, description, image_path, featured, active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)");
+            $stmt->execute([$catId, $p['name'], $p['sku'], $p['price'], $p['description'], $p['image'], $p['featured']]);
+            $productIds[] = $pdo->lastInsertId();
         }
     }
 
-    echo "<p style='color: green;'>✅ Total de <strong>{$count}</strong> novos produtos de rosas, arranjos e girassóis cadastrados!</p>";
-    echo "<hr style='border:1px dashed #DDD;'>";
-    echo "<p style='font-size:1.1rem;'>🎉 <strong>Catálogo e Banners de Helena Flores 100% Ativos!</strong></p>";
-    echo "<a href='index.php' style='display: inline-block; padding: 14px 28px; background: #8B263E; color: white; border-radius: 30px; text-decoration: none; font-weight: bold;'>🌸 Acessar o Site Helena Flores Agora →</a>";
+    // 3. Seed Fake Customer for DB Testing
+    $fakeEmail = 'cliente@helenaflores.com.br';
+    $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+    $stmt->execute([$fakeEmail]);
+    $fakeUser = $stmt->fetch();
+
+    if (!$fakeUser) {
+        $stmt = $pdo->prepare("INSERT INTO users (name, email, phone, password, address) VALUES (?, ?, ?, ?, ?)");
+        $stmt->execute([
+            'Cliente Helena Flores',
+            $fakeEmail,
+            '5511986727872',
+            password_hash('cliente123', PASSWORD_DEFAULT),
+            'Alameda Jaú, 1777, Jardim Paulista, São Paulo/SP'
+        ]);
+        $fakeUserId = $pdo->lastInsertId();
+    } else {
+        $fakeUserId = $fakeUser['id'];
+    }
+
+    // 4. Seed Test Order for Tag & Order Table Testing
+    $stmt = $pdo->query("SELECT COUNT(*) as cnt FROM orders");
+    $orderCnt = $stmt->fetch()['cnt'];
+
+    if ($orderCnt == 0 && !empty($productIds)) {
+        $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_amount, status, payment_method, shipping_address, created_at) VALUES (?, ?, 'pending', 'whatsapp', ?, NOW())");
+        $stmt->execute([
+            $fakeUserId,
+            389.90,
+            'Alameda Jaú, 1777, Jardim Paulista, São Paulo/SP'
+        ]);
+        $orderId = $pdo->lastInsertId();
+
+        $stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, 1, 389.90)");
+        $stmt->execute([$orderId, $productIds[0]]);
+    }
+
+    // 5. Seed Banners
+    $banners = [
+        [
+            'title' => 'Rosas Colombianas Selecionadas',
+            'subtitle' => 'Há mais de 11 anos cultivando emoções nos Jardins em São Paulo.',
+            'image' => 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=1600&q=80',
+            'link_url' => '#produtos',
+            'active' => 1
+        ],
+        [
+            'title' => 'Cestas de Café & Presentes de Luxo',
+            'subtitle' => 'Entregas expressas no mesmo dia para surpreender quem você ama.',
+            'image' => 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=1600&q=80',
+            'link_url' => '#produtos',
+            'active' => 1
+        ]
+    ];
+
+    try {
+        foreach ($banners as $idx => $b) {
+            $stmt = $pdo->prepare("INSERT IGNORE INTO banners (title, subtitle, image_path, link_url, display_order, active) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$b['title'], $b['subtitle'], $b['image'], $b['link_url'], $idx + 1, $b['active']]);
+        }
+    } catch (Exception $e) {}
+
+    echo "
+    <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 30px; background: #FFF5F7; border: 2px solid #D81B60; border-radius: 12px; text-align: center;'>
+        <h1 style='color: #C2185B;'>🌸 Catálogo Helena Flores Semeado!</h1>
+        <p style='font-size: 1.1rem; color: #333;'>Todos os produtos do WhatsApp Business, categorias, banners e um cliente de teste foram cadastrados com sucesso!</p>
+        <hr style='border: 0; border-top: 1px solid #E0D0D5; margin: 20px 0;'>
+        <div style='text-align: left; background: #FFF; padding: 15px; border-radius: 8px; font-size: 0.9rem;'>
+            <strong>📌 Cliente de Teste:</strong><br>
+            • Email: <code>cliente@helenaflores.com.br</code><br>
+            • Senha: <code>cliente123</code><br>
+            • WhatsApp: <code>(11) 98672-7872</code>
+        </div>
+        <br>
+        <a href='index.php' style='display: inline-block; background: #D81B60; color: #FFF; padding: 12px 28px; border-radius: 25px; text-decoration: none; font-weight: bold;'>
+            🌸 Ver Loja Helena Flores →
+        </a>
+    </div>
+    ";
 
 } catch (Exception $e) {
-    echo "<p style='color: red;'>❌ Erro ao popular banco: " . htmlspecialchars($e->getMessage()) . "</p>";
+    echo "<h3 style='color:red;'>Erro ao semear: " . htmlspecialchars($e->getMessage()) . "</h3>";
 }
-
-echo "</div>";
