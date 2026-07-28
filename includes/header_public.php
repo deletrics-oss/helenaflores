@@ -18,8 +18,11 @@ $allCats = [];
 try {
     $allCats = $pdo->query("SELECT * FROM categories ORDER BY sort_order ASC, name ASC")->fetchAll();
 } catch (Exception $e) {}
+
+$baseUrl = defined('BASE_URL') ? BASE_URL : '';
 ?>
-<link rel="stylesheet" href="<?php echo BASE_URL; ?>/assets/css/helena_theme.css?v=<?php echo time(); ?>">
+<!-- Relative CSS Import so it NEVER breaks regardless of folder name -->
+<link rel="stylesheet" href="<?php echo $baseUrl; ?>/assets/css/helena_theme.css?v=<?php echo time(); ?>">
 
 <!-- Giuliana Top Announcement Bar -->
 <div class="gf-top-announcement">
@@ -32,12 +35,12 @@ try {
 <header class="gf-header">
     <div class="gf-header-container">
         <!-- Logo -->
-        <a href="<?php echo BASE_URL; ?>/" class="gf-logo">
+        <a href="<?php echo $baseUrl; ?>/" class="gf-logo">
             🌹 Helena <span>Flores</span>
         </a>
 
         <!-- Search Bar -->
-        <form action="<?php echo BASE_URL; ?>/" method="GET" class="gf-search-form">
+        <form action="<?php echo $baseUrl; ?>/" method="GET" class="gf-search-form">
             <input type="text" name="q" class="gf-search-input" 
                    placeholder="O que você está procurando hoje? (ex: Rosas, Buquês, Cestas)..." 
                    value="<?php echo htmlspecialchars($searchQuery); ?>">
@@ -47,12 +50,12 @@ try {
         <!-- Right User Actions -->
         <nav style="display:flex; gap:12px; align-items:center;">
             <?php if ($is_logged): ?>
-                <a href="<?php echo BASE_URL; ?>/my-orders.php" style="color:#444; font-weight:600; text-decoration:none; font-size:0.88rem;">📦 Meus Pedidos</a>
-                <a href="<?php echo BASE_URL; ?>/cart.php" class="gf-btn-primary" style="padding:8px 18px; font-size:0.88rem;">🛒 Carrinho</a>
-                <a href="<?php echo BASE_URL; ?>/logout.php" style="color:var(--gf-magenta); font-weight:600; text-decoration:none; font-size:0.85rem;">Sair</a>
+                <a href="<?php echo $baseUrl; ?>/my-orders.php" style="color:#444; font-weight:600; text-decoration:none; font-size:0.88rem;">📦 Meus Pedidos</a>
+                <a href="<?php echo $baseUrl; ?>/cart.php" class="gf-btn-primary" style="padding:8px 18px; font-size:0.88rem;">🛒 Carrinho</a>
+                <a href="<?php echo $baseUrl; ?>/logout.php" style="color:var(--gf-magenta); font-weight:600; text-decoration:none; font-size:0.85rem;">Sair</a>
             <?php else: ?>
-                <a href="<?php echo BASE_URL; ?>/login.php" style="color:#444; font-weight:600; text-decoration:none; font-size:0.88rem;">🔑 Entrar</a>
-                <a href="<?php echo BASE_URL; ?>/cart.php" class="gf-btn-primary" style="padding:8px 18px; font-size:0.88rem;">🛒 Carrinho</a>
+                <a href="<?php echo $baseUrl; ?>/login.php" style="color:#444; font-weight:600; text-decoration:none; font-size:0.88rem;">🔑 Entrar</a>
+                <a href="<?php echo $baseUrl; ?>/cart.php" class="gf-btn-primary" style="padding:8px 18px; font-size:0.88rem;">🛒 Carrinho</a>
             <?php endif; ?>
         </nav>
     </div>
@@ -61,11 +64,11 @@ try {
 <!-- Giuliana Style Category Pills Bar -->
 <div class="gf-category-bar">
     <div class="gf-category-scroll">
-        <a href="<?php echo BASE_URL; ?>/" class="gf-cat-pill <?php echo !$currentCat ? 'active' : ''; ?>">
+        <a href="<?php echo $baseUrl; ?>/" class="gf-cat-pill <?php echo !$currentCat ? 'active' : ''; ?>">
             🌹 Todas as Flores
         </a>
         <?php foreach ($allCats as $c): ?>
-            <a href="<?php echo BASE_URL; ?>/?cat=<?php echo $c['id']; ?>" 
+            <a href="<?php echo $baseUrl; ?>/?cat=<?php echo $c['id']; ?>" 
                class="gf-cat-pill <?php echo $currentCat == $c['id'] ? 'active' : ''; ?>">
                🌸 <?php echo htmlspecialchars($c['name']); ?>
             </a>
@@ -75,11 +78,11 @@ try {
 
 <!-- Mobile Bottom Bar -->
 <div class="mobile-bottom-nav">
-    <a href="<?php echo BASE_URL; ?>/" class="bottom-nav-item active">
+    <a href="<?php echo $baseUrl; ?>/" class="bottom-nav-item active">
         <i>🌸</i>
         <span>Catálogo</span>
     </a>
-    <a href="<?php echo BASE_URL; ?>/cart.php" class="bottom-nav-item">
+    <a href="<?php echo $baseUrl; ?>/cart.php" class="bottom-nav-item">
         <i>🛒</i>
         <span>Carrinho</span>
     </a>
@@ -87,7 +90,7 @@ try {
         <i>💬</i>
         <span>WhatsApp</span>
     </a>
-    <a href="<?php echo BASE_URL; ?>/profile.php" class="bottom-nav-item">
+    <a href="<?php echo $baseUrl; ?>/profile.php" class="bottom-nav-item">
         <i>👤</i>
         <span>Conta</span>
     </a>
