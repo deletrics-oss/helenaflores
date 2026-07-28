@@ -1,0 +1,146 @@
+<?php
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes/db.php';
+session_start();
+
+// Filter Logic
+$cat_id = isset($_GET['cat']) ? (int) $_GET['cat'] : 0;
+$search = isset($_GET['q']) ? trim($_GET['q']) : '';
+
+// Build Query
+$sql = "SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.active = 1";
+$params = [];
+
+if ($cat_id) {
+    $sql .= " AND p.category_id = :cat";
+    $params[':cat'] = $cat_id;
+}
+if ($search) {
+    $sql .= " AND (p.name LIKE :q OR p.description LIKE :q OR p.sku LIKE :q)";
+    $params[':q'] = "%$search%";
+}
+
+$sql .= " ORDER BY p.featured DESC, p.created_at DESC";
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$products = $stmt->fetchAll();
+
+// Get Categories for Sidebar/Filter
+$cats = $pdo->query("SELECT * FROM categories ORDER BY sort_order ASC")->fetchAll();
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo | Fight Arcade</title>
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>/assets/css/style.css">
+</head>
+
+<body>
+
+    <?php include __DIR__ . '/includes/header_public.php'; ?>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <h1>Arcade Parts Pro</h1>
+            <p>
+                <?php echo SITE_NAME; ?> - O maior distribuidor de peças para fliperama do Brasil. Atacado e Varejo.
+            </p>
+            <a href="#produtos" class="btn">Ver Catálogo</a>
+        </div>
+    </section>
+
+    <div class="container" id="produtos">
+        <!-- Filters -->
+        <div
+            style="background: var(--bg-card); padding: 1rem; border-radius: 8px; margin-bottom: 2rem; border:1px solid var(--border); display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between;">
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                <a href="<?php echo BASE_URL; ?>/"
+                    class="btn-sm <?php echo !$cat_id ? 'btn' : 'btn-secondary'; ?>">Todos</a>
+                <?php foreach ($cats as $c): ?>
+                    <a href="?cat=<?php echo $c['id']; ?>"
+                        class="btn-sm <?php echo $cat_id == $c['id'] ? 'btn' : 'btn-secondary'; ?>">
+                        <?php echo htmlspecialchars($c['name']); ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+            <form method="GET" style="display:flex; gap:0.5rem; margin:0; flex:1; max-width:300px;">
+                <input type="text" name="q" value="<?php echo htmlspecialchars($search); ?>"
+                    placeholder="Buscar produto..." style="margin:0;">
+                <button type="submit" class="btn-sm btn">Buscar</button>
+            </form>
+        </div>
+
+        <!-- Product Grid -->
+        <?php if (count($products) > 0): ?>
+            <div class="grid-products">
+                <?php foreach ($products as $p): ?>
+                    <div class="product-card">
+                        <div class="product-img">
+                            <!-- Placeholder image if none exists -->
+                            <?php
+                            $img = $p['image_path'] ? BASE_URL . '/assets/uploads/' . $p['image_path'] : 'https://via.placeholder.com/300x300/151a25/ffb703?text=' . urlencode($p['name']);
+                            ?>
+                            <img src="<?php echo $img; ?>" alt="<?php echo htmlspecialchars($p['name']); ?>">
+                        </div>
+                        <div class="product-info">
+                            <span class="product-cat">
+                                <?php echo htmlspecialchars($p['category_name'] ?? 'Geral'); ?>
+                            </span>
+                            <h3 class="product-title">
+                                <?php echo htmlspecialchars($p['name']); ?>
+                            </h3>
+                            <p class="product-sku">SKU:
+                                <?php echo htmlspecialchars($p['sku']); ?>
+                            </p>
+
+                            <div class="prices">
+                                <div class="price-tag">
+                                    <span class="price-label">Varejo:</span>
+                                    <span class="price-value">R$
+                                        <?php echo number_format($p['price'], 2, ',', '.'); ?>
+                                    </span>
+                                </div>
+                                <?php if ($p['price_wholesale'] > 0): ?>
+                                    <div class="price-tag">
+                                        <span class="price-label" style="color:var(--success)">Atacado (>
+                                            <?php echo $p['min_wholesale_qty']; ?> un):
+                                        </span>
+                                        <span class="price-value" style="color:var(--success)">R$
+                                            <?php echo number_format($p['price_wholesale'], 2, ',', '.'); ?>
+                                        </span>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+
+                            <form action="<?php echo BASE_URL; ?>/cart.php" method="POST"
+                                style="margin-top:1rem; display:flex; gap:0.5rem;">
+                                <input type="hidden" name="action" value="add">
+                                <input type="hidden" name="product_id" value="<?php echo $p['id']; ?>">
+                                <input type="number" name="qty" value="1" min="1"
+                                    style="width:70px; margin:0; text-align:center;">
+                                <button type="submit" class="btn" style="flex:1;">Adicionar</button>
+                            </form>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <p style="text-align:center; padding:3rem; color:var(--text-muted);">Nenhum produto encontrado.</p>
+        <?php endif; ?>
+    </div>
+
+    <footer style="margin-top:4rem;">
+        <div class="container">
+            &copy;
+            <?php echo date('Y'); ?>
+            <?php echo SITE_NAME; ?>.
+        </div>
+    </footer>
+
+</body>
+
+</html>
