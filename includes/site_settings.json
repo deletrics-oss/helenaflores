@@ -1,0 +1,17 @@
+{
+  "site_name": "Helena Flores",
+  "whatsapp": "(11) 98672-7872",
+  "whatsapp_raw": "5511986727872",
+  "cnpj": "18.274.066/0001-35",
+  "address": "Alameda Jaú, 1777, Jardim Paulista, São Paulo/SP",
+  "copyright": "Helena Flores - 2026. Todos os direitos reservados",
+  "hours": "Segunda a Sábado: 08:00 às 20:00 | Domingo: 09:00 às 15:00",
+  "hero_title": "Helena Flores - Atelier & Floricultura nos Jardins",
+  "hero_subtitle": "Há mais de 11 anos cultivando emoções. Buquês de Rosas Colombianas, Cestas Personalizadas e Arranjos de Luxo em São Paulo.",
+  "primary_color": "#C5A059",
+  "accent_color": "#8B263E",
+  "slider_speed": 4000,
+  "slider_height": 380,
+  "slider_overlay": 0.5,
+  "enable_wholesale": 0
+}
