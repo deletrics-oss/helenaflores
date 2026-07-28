@@ -54,4 +54,36 @@ if (session_status() === PHP_SESSION_NONE) {
     }
     session_start();
 }
-?>
+
+/**
+ * Smart Fallback Image Helper: Ensures NO product ever shows a broken image link
+ */
+if (!function_exists('get_product_image_url')) {
+    function get_product_image_url($image_path, $title = '') {
+        $baseUrl = defined('BASE_URL') ? BASE_URL : '';
+        if (empty($image_path)) {
+            return $baseUrl . '/assets/uploads/rose_red.jpg';
+        }
+        if (strpos($image_path, 'http') === 0) {
+            return $image_path;
+        }
+
+        $filename = basename($image_path);
+        $physicalPath = __DIR__ . '/assets/uploads/' . $filename;
+        if (file_exists($physicalPath) && filesize($physicalPath) > 300) {
+            return $baseUrl . '/assets/uploads/' . $filename;
+        }
+
+        // Smart Fallback by Title Keyword
+        if (preg_match('/cesta|café|cafe/i', $title)) return $baseUrl . '/assets/uploads/cesta_cafe.jpg';
+        if (preg_match('/girassol/i', $title)) return $baseUrl . '/assets/uploads/girassol.jpg';
+        if (preg_match('/orquídea|orquidea/i', $title)) return $baseUrl . '/assets/uploads/orquidea.jpg';
+        if (preg_match('/tulipa/i', $title)) return $baseUrl . '/assets/uploads/tulipa.jpg';
+        if (preg_match('/ferrero|rocher|kit|presente/i', $title)) return $baseUrl . '/assets/uploads/kit_ferrero.jpg';
+        if (preg_match('/arranjo|vaso|lírio|lirio/i', $title)) return $baseUrl . '/assets/uploads/arranjo_vaso.jpg';
+        if (preg_match('/pink|rosé|rose/i', $title)) return $baseUrl . '/assets/uploads/rose_pink.jpg';
+        if (preg_match('/amarel/i', $title)) return $baseUrl . '/assets/uploads/rose_yellow.jpg';
+
+        return $baseUrl . '/assets/uploads/rose_red.jpg';
+    }
+}
