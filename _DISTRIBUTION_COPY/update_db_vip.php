@@ -1,38 +1,56 @@
 <?php
-// catalogo/update_db_vip.php
-require_once 'config.php';
-require_once 'includes/db.php';
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
 
-echo "<h1>Atualizando para Sistema VIP (Produtos + Clientes)...</h1>";
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
-try {
-    // 1. Add is_vip column to products
-    try {
-        $pdo->query("ALTER TABLE products ADD COLUMN is_vip TINYINT(1) DEFAULT 0");
-        echo "<p>✅ Coluna 'is_vip' adicionada em 'products'.</p>";
-    } catch (PDOException $e) {
-        if (strpos($e->getMessage(), "Duplicate column") !== false) {
-            echo "<p>ℹ️ Coluna 'is_vip' já existia em 'products'.</p>";
-        } else {
-            echo "<p>❌ Erro Products: " . $e->getMessage() . "</p>";
-        }
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
+
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
+
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
-
-    // 2. Add is_vip column to users (New)
-    try {
-        $pdo->query("ALTER TABLE users ADD COLUMN is_vip TINYINT(1) DEFAULT 0");
-        echo "<p>✅ Coluna 'is_vip' adicionada em 'users'.</p>";
-    } catch (PDOException $e) {
-        if (strpos($e->getMessage(), "Duplicate column") !== false) {
-            echo "<p>ℹ️ Coluna 'is_vip' já existia em 'users'.</p>";
-        } else {
-            echo "<p>❌ Erro Users: " . $e->getMessage() . "</p>";
-        }
-    }
-
-    echo "<h2>Tudo Pronto! Sistema VIP Completo.</h2>";
-    echo "<p><a href='admin/customer-create.php'>Cadastrar Cliente VIP</a></p>";
-
-} catch (Exception $e) {
-    die("Erro Geral: " . $e->getMessage());
 }
+
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
+
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
+?>
