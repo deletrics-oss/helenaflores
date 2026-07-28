@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO `users` (`name`, `email`, `phone`, `password`, `role`) VALUES
+INSERT IGNORE INTO `users` (`name`, `email`, `phone`, `password`, `role`) VALUES
 ('Admin Suporte', 'admin', '00000000000', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin');
 
 -- 3. Tabela de Categorias
@@ -176,7 +176,7 @@ CREATE TABLE IF NOT EXISTS `module_settings` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO `module_settings` (`module_key`, `is_active`) VALUES
+INSERT IGNORE INTO `module_settings` (`module_key`, `is_active`) VALUES
 ('payment_mercadopago', 0),
 ('payment_nupay', 0),
 ('shipping_correios', 1),
