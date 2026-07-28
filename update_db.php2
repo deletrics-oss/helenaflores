@@ -1,0 +1,17 @@
+<?php
+// catalogo/update_db.php
+require_once 'config.php';
+require_once 'includes/db.php';
+
+try {
+    $sql = "ALTER TABLE orders ADD COLUMN shipping_method VARCHAR(50) DEFAULT 'A Combinar'";
+    $pdo->query($sql);
+    echo "<h1>Sucesso!</h1><p>Banco de dados atualizado. Coluna 'shipping_method' criada.</p>";
+    echo "<p>Apague este arquivo do servidor agora.</p>";
+} catch (PDOException $e) {
+    if (strpos($e->getMessage(), "Duplicate column") !== false) {
+        echo "<h1>Aviso:</h1><p>A coluna já existe. Tudo certo.</p>";
+    } else {
+        die("Erro ao atualizar: " . $e->getMessage());
+    }
+}
