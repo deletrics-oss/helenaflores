@@ -1,74 +1,56 @@
 <?php
-require_once '../config.php';
-require_once '../includes/db.php';
-require_once '../includes/user_auth.php';
-isAdmin();
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
 
-header('Content-Type: application/json');
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
-// Get JSON Input
-$input = file_get_contents('php://input');
-$data = json_decode($input, true);
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
-if (!$data || !is_array($data)) {
-    echo json_encode(['success' => false, 'error' => 'JSON inválido ou vazio']);
-    exit;
-}
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
 
-$updatedCount = 0;
-$errors = [];
-
-try {
-    $pdo->beginTransaction();
-
-    foreach ($data as $item) {
-        if (!isset($item['id']))
-            continue;
-
-        $id = (int) $item['id'];
-        $fields = [];
-        $params = [];
-
-        // Map allowed fields dynamically
-        // Numerical/Float fields
-        $floats = ['price', 'price_wholesale', 'weight_kg', 'length_cm', 'width_cm', 'height_cm'];
-        foreach ($floats as $f) {
-            if (isset($item[$f])) {
-                $fields[] = "$f = :$f";
-                $params[":$f"] = (float) $item[$f];
-            }
-        }
-
-        // String fields
-        $strings = ['name', 'sku', 'ean', 'ncm', 'brand', 'gtin', 'mpn', 'description', 'seo_title', 'seo_description'];
-        foreach ($strings as $s) {
-            if (isset($item[$s])) {
-                $fields[] = "$s = :$s";
-                $params[":$s"] = $item[$s];
-            }
-        }
-
-        // Integer keys (if any specific, though dimensions are usually int, float covers them safely in prepared statements for MySQL)
-
-        if (empty($fields))
-            continue;
-
-        $params[':id'] = $id;
-        $sql = "UPDATE products SET " . implode(', ', $fields) . " WHERE id = :id";
-
-        $stmt = $pdo->prepare($sql);
-        if ($stmt->execute($params)) {
-            $updatedCount++;
-        } else {
-            $errors[] = "Falha ao atualizar ID $id";
-        }
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
-
-    $pdo->commit();
-    echo json_encode(['success' => true, 'message' => "Sucesso! $updatedCount produtos atualizados.", 'errors' => $errors]);
-
-} catch (Exception $e) {
-    if ($pdo->inTransaction())
-        $pdo->rollBack();
-    echo json_encode(['success' => false, 'error' => 'Erro no servidor: ' . $e->getMessage()]);
 }
+
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
+
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
+?>
