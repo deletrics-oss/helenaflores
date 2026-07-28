@@ -1,22 +1,56 @@
 <?php
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/includes/db.php';
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
 
-$products = $pdo->query("SELECT id, name, image_path FROM products LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
-echo "<h1>Product Images Check</h1>";
-echo "<table border='1'>";
-echo "<tr><th>ID</th><th>Name</th><th>Image Path Value</th><th>File Exists?</th></tr>";
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
-foreach ($products as $p) {
-    if (empty($p['image_path'])) {
-        $status = "<span style='color:red;'>NULL or Empty</span>";
-        $exists = "-";
-    } else {
-        $status = "<code>" . htmlspecialchars($p['image_path']) . "</code>";
-        $filePath = __DIR__ . '/assets/uploads/' . $p['image_path'];
-        $exists = file_exists($filePath) ? "<span style='color:green;'>YES</span>" : "<span style='color:red;'>NO</span>";
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
+
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
-    echo "<tr><td>{$p['id']}</td><td>" . htmlspecialchars($p['name']) . "</td><td>$status</td><td>$exists</td></tr>";
 }
-echo "</table>";
+
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
+
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
+?>
