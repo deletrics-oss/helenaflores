@@ -1,0 +1,37 @@
+# FightArcade SEO & Routing
+RewriteEngine On
+
+# Redirect sitemap.xml to sitemap.php
+RewriteRule ^sitemap\.xml$ sitemap.php [L]
+
+# Redirect robots.txt properly
+RewriteRule ^robots\.txt$ robots.txt [L]
+
+# Security: Block access to sensitive files
+<FilesMatch "\.(sql|log|md|json|bak|zip|rar)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Allow specific json files if needed
+<FilesMatch "^(google-merchant-feed)\.php$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>
+
+# Enable GZIP compression for better performance & SEO
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json image/svg+xml
+</IfModule>
+
+# Browser caching for better page speed (SEO factor)
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+</IfModule>
