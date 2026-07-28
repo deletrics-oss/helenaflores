@@ -1,41 +1,56 @@
--- ============================================
--- MIGRAÇÃO: Adicionar Mapeamento Shopee
--- ============================================
--- Este script adiciona suporte para mapear categorias
--- internas para categorias da Shopee
+<?php
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
 
--- 1. Adicionar coluna shopee_category_id
-ALTER TABLE categories 
-ADD COLUMN shopee_category_id VARCHAR(50) DEFAULT NULL 
-AFTER name;
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/notifications.php';
 
--- 2. Definir categoria padrão para todas as categorias existentes
-UPDATE categories 
-SET shopee_category_id = '121101' 
-WHERE shopee_category_id IS NULL;
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
 
--- ============================================
--- EXEMPLOS DE CATEGORIAS SHOPEE COMUNS
--- ============================================
--- Depois de rodar este script, você pode atualizar
--- manualmente cada categoria no painel admin
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
 
--- Eletrônicos > Acessórios: 121101
--- Eletrônicos > Games: 120039
--- Eletrônicos > Computadores: 120038
--- Hobbies > Colecionáveis: 125001
--- Esportes > Equipamentos: 130001
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
+    }
+}
 
--- ============================================
--- EXEMPLO DE USO MANUAL
--- ============================================
--- UPDATE categories 
--- SET shopee_category_id = '120039' 
--- WHERE name = 'Jogos Arcade';
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
 
--- ============================================
--- VERIFICAÇÃO
--- ============================================
-SELECT id, name, shopee_category_id 
-FROM categories 
-ORDER BY id;
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
+}
+
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
+?>
