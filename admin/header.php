@@ -18,6 +18,8 @@ include_once __DIR__ . '/../includes/theme_injector.php';
             </a>
         </div>
         <nav class="nav-links admin-nav">
+            <a href="../seed_helena_flores.php" target="_blank" style="background:#8B263E; color:#FFF; font-weight:bold; border-radius:4px;">🌹 Semeador Helena Flores</a>
+            <a href="import-catalog-bot.php" style="background:#C5A059; color:#FFF; font-weight:bold; border-radius:4px;">🤖 Robô Extrator (Clonar)</a>
             <a href="dashboard.php">📊 Dash</a>
             <a href="orders.php">📦 Pedidos</a>
             <a href="purchase_pos.php" style="color:#00e676; font-weight:bold;">🛒 PDV de Compra</a>
