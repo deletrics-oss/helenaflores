@@ -1,108 +1,56 @@
 <?php
+/**
+ * webhooks/uber.php — Fight Arcade
+ * Receptor de eventos da Uber (Status de entrega, Pedidos Eats, etc)
+ */
+
 require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes/user_auth.php';
 require_once __DIR__ . '/../includes/db.php';
-isAdmin();
+require_once __DIR__ . '/../includes/notifications.php';
 
-// Actions
-if (isset($_GET['action']) && isset($_GET['id'])) {
-    $id = (int) $_GET['id'];
-    if ($_GET['action'] == 'approve') {
-        $pdo->query("UPDATE product_reviews SET approved = 1 WHERE id = $id");
-    } elseif ($_GET['action'] == 'reject') {
-        $pdo->query("UPDATE product_reviews SET approved = 0 WHERE id = $id");
-    } elseif ($_GET['action'] == 'delete') {
-        $pdo->query("DELETE FROM product_reviews WHERE id = $id");
+// Recebe o payload da Uber
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
+
+// 1. Fetch Uber Signing Key
+$signingKey = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'uber_webhook_signing_key'")->fetchColumn();
+
+// 2. HMAC Verification (Security)
+if ($signingKey) {
+    $signature = $_SERVER['HTTP_X_UBER_SIGNATURE'] ?? '';
+    $computed = hash_hmac('sha256', $payload, $signingKey);
+    if (!hash_equals($computed, $signature)) {
+        file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . "INVALID SIGNATURE: " . $signature . PHP_EOL, FILE_APPEND);
+        http_response_code(401);
+        exit('Unauthorized');
     }
-    header("Location: reviews.php");
-    exit;
 }
 
-try {
-    $reviews = $pdo->query("SELECT r.*, p.name as product_name FROM product_reviews r LEFT JOIN products p ON r.product_id = p.id ORDER BY r.created_at DESC")->fetchAll();
-} catch (Exception $e) {
-    // Table probably missing
-    $error = "A tabela de avaliações não existe ou está com problemas.";
-    $reviews = [];
+// Log do evento para debug (opcional)
+file_put_contents(__DIR__ . '/../logs/uber_webhook.log', date('[Y-m-d H:i:s] ') . $payload . PHP_EOL, FILE_APPEND);
+
+$notif = new NotificationService($pdo);
+
+// Lógica de processamento de eventos
+$event = $data['event_type'] ?? '';
+$resourceId = $data['resource_id'] ?? '';
+
+switch ($event) {
+    case 'delivery.status_changed':
+        $status = $data['status'] ?? '';
+        // Atualiza o status no seu banco (RMA ou Pedidos)
+        // O resourceId aqui seria o ID da entrega na Uber
+        $pdo->prepare("UPDATE orders SET status = ? WHERE uber_delivery_id = ?")
+            ->execute([strtolower($status), $resourceId]);
+        break;
+
+    case 'orders.notification':
+        // Novo pedido vindo do Uber Eats!
+        $notif->newUberOrder($resourceId);
+        break;
 }
-?> <?php if (isset($error)): ?>
-    <div style="background:red; color:white; padding:1rem; text-align:center; margin-top:50px;">
-        <h3>⚠️ Erro no Banco de Dados</h3>
-        <p><?php echo $error; ?></p>
-        <a href="../update_db_full.php" class="btn" style="background:white; color:red; font-weight:bold;">🛠️ Corrigir
-            Banco de Dados Agora</a>
-    </div>
-    <?php exit; endif; ?>
-<!DOCTYPE html>
-<html lang="pt-BR">
 
-<head>
-    <meta charset="UTF-8">
-    <title>Gerenciar Avaliações | Admin</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-</head>
-
-<body>
-    <?php include 'header.php'; ?>
-
-    <div class="container" style="padding-top:2rem;">
-        <div class="auth-box" style="max-width:1000px; margin:0 auto;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem;">
-                <h2>⭐ Avaliações de Produtos</h2>
-            </div>
-
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Produto</th>
-                        <th>Cliente</th>
-                        <th>Nota</th>
-                        <th>Comentário</th>
-                        <th>Status</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($reviews as $r): ?>
-                        <tr>
-                            <td>
-                                <?php echo date('d/m/y H:i', strtotime($r['created_at'])); ?>
-                            </td>
-                            <td>
-                                <?php echo htmlspecialchars($r['product_name']); ?>
-                            </td>
-                            <td>
-                                <?php echo htmlspecialchars($r['user_name']); ?>
-                            </td>
-                            <td><span style="color:gold;">
-                                    <?php echo str_repeat('★', $r['rating']); ?>
-                                </span></td>
-                            <td><small>
-                                    <?php echo htmlspecialchars(substr($r['comment'], 0, 50)); ?>...
-                                </small></td>
-                            <td>
-                                <?php if ($r['approved']): ?>
-                                    <span class="badge badge-success">Aprovado</span>
-                                <?php else: ?>
-                                    <span class="badge badge-danger">Pendente</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php if (!$r['approved']): ?>
-                                    <a href="?action=approve&id=<?php echo $r['id']; ?>" class="btn-sm btn-primary">✅</a>
-                                <?php else: ?>
-                                    <a href="?action=reject&id=<?php echo $r['id']; ?>" class="btn-sm btn-secondary">🚫</a>
-                                <?php endif; ?>
-                                <a href="?action=delete&id=<?php echo $r['id']; ?>" class="btn-sm btn-danger"
-                                    onclick="return confirm('Excluir?');">🗑️</a>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</body>
-
-</html>
+// Responde 200 OK para a Uber não tentar reenviar
+http_response_code(200);
+echo json_encode(['status' => 'received']);
+?>
