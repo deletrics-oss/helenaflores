@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
+import readline from 'readline';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,7 +14,21 @@ if (!fs.existsSync(UPLOADS_DIR)) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-// 118 exact filenames matching catalog order
+// Helper to wait for User ENTER key in CMD
+function waitForEnter(promptText) {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+    return new Promise((resolve) => {
+        rl.question(promptText, () => {
+            rl.close();
+            resolve();
+        });
+    });
+}
+
+// 118 exact filenames in catalog order
 const EXACT_NAMES = [
   "001-buque-com-12-colombianas.jpg", "002-buque-com-rosas-colombianas.jpg", "003-buque-de-rosas-pink-colombiana.jpg", 
   "004-cesta-com-chambinho-do-amor.jpg", "005-cesta-com-rosa-e-urso.jpg", "006-kit-dia-dos-namorados.jpg", 
@@ -57,8 +72,7 @@ const EXACT_NAMES = [
 (async () => {
     try {
         console.log('\n==========================================================');
-        console.log('   🌸 HELENA FLORES — ROBÔ AUTOMÁTICO ESTILO MAKERLIST');
-        console.log('   (Extração Foto a Foto 1-por-1 do WhatsApp Web)');
+        console.log('   🌸 HELENA FLORES — ROBÔ EXTRATOR ESTILO MAKERLIST v3.0');
         console.log('==========================================================\n');
 
         console.log('🚀 Abrindo o navegador do WhatsApp Web...');
@@ -71,73 +85,66 @@ const EXACT_NAMES = [
         const page = await context.newPage();
         await page.goto('https://web.whatsapp.com');
 
-        console.log('⏳ Por favor, escaneie o QR Code (se necessário) e ABRIR O CATÁLOGO DO CLIENTE.');
-        console.log('👉 O robô vai aguardar até você abrir o catálogo...\n');
+        console.log('\n==========================================================');
+        console.log('📌 PASSO A PASSO PARA VOCÊ NO NAVEGADOR:');
+        console.log(' 1. Abra o WhatsApp Web');
+        console.log(' 2. Entre no contato +55 11 3791-2827 (Helena Flores)');
+        console.log(' 3. Clique no ícone do CATÁLOGO para ver a lista dos produtos!');
+        console.log('==========================================================\n');
 
-        // Wait until catalog panel is detected
-        let catalogReady = false;
-        for (let attempts = 0; attempts < 60; attempts++) {
-            const hasCatalog = await page.evaluate(() => {
-                const bodyText = document.body.innerText || '';
-                return bodyText.includes('Catálogo') || bodyText.includes('Detalhes') || document.querySelectorAll('img[src*="blob"]').length > 0;
-            });
+        await waitForEnter('👉 Quando a tela do CATÁLOGO estiver visível no WhatsApp, volte aqui e PRESSIONE [ENTER] para iniciar...');
 
-            if (hasCatalog) {
-                catalogReady = true;
-                console.log('✅ Catálogo detectado na tela! Iniciando captura foto a foto...');
-                break;
-            }
-            await page.waitForTimeout(2000);
-        }
+        console.log('\n⚡ Robô iniciado! Escaneando produtos do catálogo...');
 
-        if (!catalogReady) {
-            console.log('⚠️ Tempo esgotado aguardando o catálogo. O robô irá tentar extrair as imagens visíveis...');
-        }
-
-        // Scroll to load list items
+        // Smooth scroll through catalog list to load all items
         await page.evaluate(async () => {
-            const scrollable = Array.from(document.querySelectorAll('div')).find(el => el.scrollHeight > 500);
-            if (scrollable) {
-                for (let i = 0; i < 30; i++) {
-                    scrollable.scrollTop += 300;
-                    await new Promise(r => setTimeout(r, 150));
-                }
-                scrollable.scrollTop = 0;
+            const scrollable = Array.from(document.querySelectorAll('div')).find(el => {
+                const style = getComputedStyle(el);
+                return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > 400;
+            }) || document.scrollingElement;
+
+            for (let i = 0; i < 35; i++) {
+                scrollable.scrollTop += 400;
+                await new Promise(r => setTimeout(r, 120));
             }
+            scrollable.scrollTop = 0;
         });
 
         await page.waitForTimeout(1000);
 
-        // Extract all image blobs directly from browser DOM
-        const imagesInfo = await page.evaluate(async () => {
-            const imgs = Array.from(document.querySelectorAll('img'));
+        // Filter ONLY product images inside catalog rows
+        const catalogImages = await page.evaluate(async () => {
+            // Locate catalog items/cards specifically
+            const items = Array.from(document.querySelectorAll('div[role="listitem"], div[role="row"], div[role="button"]'));
             const results = [];
 
-            for (const img of imgs) {
-                const src = img.src || '';
-                if (src.startsWith('blob:') || (src.startsWith('http') && src.includes('whatsapp'))) {
-                    let title = '';
-                    let parent = img.closest('div[role="listitem"]') || img.closest('div[role="row"]') || img.parentElement?.parentElement;
-                    if (parent) {
-                        title = parent.innerText.split('\n')[0] || '';
-                    }
+            for (const item of items) {
+                const img = item.querySelector('img');
+                const text = item.innerText || '';
 
-                    results.push({ src, title });
+                // Must contain price (BRL or R$) or title to be a real catalog product card!
+                if (img && (text.includes('BRL') || text.includes('R$') || text.includes('Buquê') || text.includes('Cesta') || text.includes('Arranjo') || text.includes('Orquídea') || text.includes('Rosa'))) {
+                    const src = img.src || '';
+                    if (src.startsWith('blob:') || (src.startsWith('http') && src.includes('whatsapp'))) {
+                        const firstLineTitle = text.split('\n').find(t => t.trim().length > 3 && !t.includes('BRL') && !t.includes('R$')) || '';
+                        results.push({ src, title: firstLineTitle.trim() });
+                    }
                 }
             }
             return results;
         });
 
-        console.log(`🔎 Encontradas ${imagesInfo.length} fotos de produtos na tela.`);
+        console.log(`\n🔎 Encontradas ${catalogImages.length} fotos oficiais de produtos no catálogo.`);
 
         let savedCount = 0;
 
-        for (let i = 0; i < imagesInfo.length; i++) {
+        for (let i = 0; i < catalogImages.length; i++) {
             try {
-                const imgItem = imagesInfo[i];
+                const imgItem = catalogImages[i];
                 const targetFilename = EXACT_NAMES[i] || `produto-${String(i+1).padStart(3, '0')}.jpg`;
                 const savePath = path.join(UPLOADS_DIR, targetFilename);
 
+                // Download full image blob from browser DOM
                 const base64Data = await page.evaluate(async (url) => {
                     try {
                         const res = await fetch(url);
@@ -155,21 +162,22 @@ const EXACT_NAMES = [
                 if (base64Data) {
                     fs.writeFileSync(savePath, Buffer.from(base64Data, 'base64'));
                     savedCount++;
-                    console.log(`📸 [${savedCount}/${imagesInfo.length}] Foto salva com sucesso: ${targetFilename}`);
+                    console.log(`📸 [${savedCount}/${catalogImages.length}] Salvo: ${targetFilename}`);
                 }
             } catch (err) {
-                console.log(`⚠️ Erro ao salvar imagem ${i+1}: ${err.message}`);
+                console.log(`⚠️ Erro ao salvar produto ${i+1}: ${err.message}`);
             }
         }
 
         console.log(`\n==========================================================`);
-        console.log(`🎉 SUCESSO! ${savedCount} fotos foram copiadas e salvas em:`);
+        console.log(`🎉 SUCESSO EXTRAORDINÁRIO! ${savedCount} fotos oficiais salvas em:`);
         console.log(`👉 ${UPLOADS_DIR}`);
         console.log(`==========================================================\n`);
 
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(2000);
         await context.close();
         process.exit(0);
+
     } catch (mainErr) {
         console.error('\n❌ ERRO NA EXECUÇÃO DO ROBÔ:');
         console.error(mainErr);
