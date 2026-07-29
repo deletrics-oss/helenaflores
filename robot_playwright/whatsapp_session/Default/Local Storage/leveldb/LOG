@@ -1,3 +1,6 @@
-2026/07/28-23:52:05.435 60bc Reusing MANIFEST C:\Users\ILHA\Documents\GitHub\helenaflores\_catalogo referencia\robot_playwright\whatsapp_session\Default\Local Storage\leveldb/MANIFEST-000001
-2026/07/28-23:52:05.534 60bc Recovering log #3
-2026/07/28-23:52:05.546 60bc Reusing old log C:\Users\ILHA\Documents\GitHub\helenaflores\_catalogo referencia\robot_playwright\whatsapp_session\Default\Local Storage\leveldb/000003.log 
+2026/07/29-00:20:27.133 417c Reusing MANIFEST C:\Users\ILHA\Documents\GitHub\helenaflores\_catalogo referencia\robot_playwright\whatsapp_session\Default\Local Storage\leveldb/MANIFEST-000001
+2026/07/29-00:20:27.151 417c Recovering log #3
+2026/07/29-00:20:27.160 417c Reusing old log C:\Users\ILHA\Documents\GitHub\helenaflores\_catalogo referencia\robot_playwright\whatsapp_session\Default\Local Storage\leveldb/000003.log 
+2026/07/29-00:28:10.649 5eb0 Level-0 table #5: started
+2026/07/29-00:28:10.661 5eb0 Level-0 table #5: 22031 bytes OK
+2026/07/29-00:28:10.665 5eb0 Delete type=0 #3
