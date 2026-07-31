@@ -1,7 +1,7 @@
 <?php
 /**
  * admin/import-catalog-bot.php — Helena Flores
- * Importador em Massa do Catálogo WhatsApp Business (118+ Produtos em 1-Clique)
+ * Importador em Massa do Catálogo WhatsApp Business (399+ Produtos em 1-Clique com Fotos)
  */
 
 require_once __DIR__ . '/header.php';
@@ -35,18 +35,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     <div style="background:linear-gradient(135deg, #C2185B 0%, #8B263E 100%); color:white; padding:30px; border-radius:16px; margin-bottom:2rem; box-shadow:0 6px 20px rgba(194,24,91,0.25);">
         <h1 style="color:#FFECB3; margin-bottom:0.5rem; font-family:Georgia, serif; font-size:1.8rem;">
-            🤖 Robô Extrator Helena Flores — Painel Administrativo
+            🤖 Sincronizador de Catálogo Completo — Helena Flores
         </h1>
         <p style="font-size:1rem; line-height:1.6; color:#FFF8F9; margin-bottom:1.5rem;">
-            Clique no botão abaixo para cadastrar automaticamente <strong>TODOS os 118 produtos e fotos do WhatsApp Business</strong> no seu banco de dados MySQL na Hostinger!
+            Clique no botão abaixo para cadastrar automaticamente <strong>TODOS os 399 produtos e fotos em alta definição do Catálogo WhatsApp</strong> no seu banco de dados MySQL na Hostinger!
         </p>
 
         <div style="display:flex; gap:15px; flex-wrap:wrap;">
-            <!-- Botão 1: Sincronizar Banco 118 Itens -->
+            <!-- Botão 1: Sincronizar Banco 399 Itens -->
             <form method="POST" style="flex:1; min-width:280px;">
                 <input type="hidden" name="btn_action" value="one_click">
                 <button type="submit" class="btn" style="width:100%; background:#4CAF50; color:#FFF; font-size:1.15rem; font-weight:800; padding:16px 24px; border-radius:30px; border:none; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.3);">
-                    ⚡ 1. SINCRONIZAR TODOS OS 118 PRODUTOS NO BANCO DE DADOS
+                    ⚡ 1. SINCRONIZAR TODOS OS 399 PRODUTOS E FOTOS NO BANCO DE DADOS
                 </button>
             </form>
         </div>
