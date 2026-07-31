@@ -56,7 +56,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 /**
- * Image Helper: Direct link to assets/uploads/ image file
+ * Smart Matching Image Helper: Automatically resolves exact or fuzzy image filenames
  */
 if (!function_exists('get_product_image_url')) {
     function get_product_image_url($image_path, $title = '') {
@@ -64,13 +64,53 @@ if (!function_exists('get_product_image_url')) {
         if (empty($image_path)) {
             return $baseUrl . '/assets/uploads/rose_red.jpg';
         }
-        if (strpos($image_path, 'http') === 0) {
-            return $image_path;
+
+        // Clean up concatenated URLs or double domain prefixes
+        if (strpos($image_path, 'http') !== false) {
+            if (preg_match('/(https?:\/\/[^\s"]+\.(?:jpg|jpeg|png|webp))/i', $image_path, $m)) {
+                if (strpos($m[1], 'unsplash') !== false) {
+                    return $m[1];
+                }
+            }
+            $image_path = basename(parse_url($image_path, PHP_URL_PATH));
         }
 
         $filename = basename($image_path);
-        
-        // Return direct upload path to allow physical image load from assets/uploads/
-        return $baseUrl . '/assets/uploads/' . $filename;
+        $uploadsDir = __DIR__ . '/assets/uploads/';
+        $physicalPath = $uploadsDir . $filename;
+
+        // 1. Exact match on disk
+        if (file_exists($physicalPath) && filesize($physicalPath) > 100) {
+            return $baseUrl . '/assets/uploads/' . $filename;
+        }
+
+        // 2. Fuzzy match by slug (stripping leading digits 001- to 999-)
+        $cleanSlug = preg_replace('/^\d+[-_]/', '', pathinfo($filename, PATHINFO_FILENAME));
+        $cleanSlug = strtolower(trim($cleanSlug));
+
+        if (!empty($cleanSlug) && is_dir($uploadsDir)) {
+            $dirFiles = scandir($uploadsDir);
+            foreach ($dirFiles as $f) {
+                if ($f === '.' || $f === '..') continue;
+                $fClean = preg_replace('/^\d+[-_]/', '', pathinfo($f, PATHINFO_FILENAME));
+                $fClean = strtolower(trim($fClean));
+
+                if (!empty($fClean) && ($fClean === $cleanSlug || strpos($fClean, $cleanSlug) !== false || strpos($cleanSlug, $fClean) !== false)) {
+                    return $baseUrl . '/assets/uploads/' . $f;
+                }
+            }
+        }
+
+        // 3. Fallback by Title Keywords
+        if (preg_match('/cesta|café|cafe/i', $title)) return $baseUrl . '/assets/uploads/cesta_cafe.jpg';
+        if (preg_match('/girassol/i', $title)) return $baseUrl . '/assets/uploads/girassol.jpg';
+        if (preg_match('/orquídea|orquidea/i', $title)) return $baseUrl . '/assets/uploads/orquidea.jpg';
+        if (preg_match('/tulipa/i', $title)) return $baseUrl . '/assets/uploads/tulipa.jpg';
+        if (preg_match('/ferrero|rocher|kit|presente/i', $title)) return $baseUrl . '/assets/uploads/kit_ferrero.jpg';
+        if (preg_match('/arranjo|vaso|lírio|lirio/i', $title)) return $baseUrl . '/assets/uploads/arranjo_vaso.jpg';
+        if (preg_match('/pink|rosé|rose/i', $title)) return $baseUrl . '/assets/uploads/rose_pink.jpg';
+        if (preg_match('/amarel/i', $title)) return $baseUrl . '/assets/uploads/rose_yellow.jpg';
+
+        return $baseUrl . '/assets/uploads/rose_red.jpg';
     }
 }
