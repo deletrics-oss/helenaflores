@@ -22,6 +22,34 @@ $uber = new UberService($pdo);
 // Migrações automáticas para tabela de pedidos
 try { $pdo->exec("ALTER TABLE orders ADD COLUMN last_tracking_status VARCHAR(255) NULL"); } catch(Exception $e) {}
 try { $pdo->exec("ALTER TABLE orders ADD COLUMN wa_notify_tracking TINYINT(1) DEFAULT 1"); } catch(Exception $e) {}
+try { $pdo->exec("ALTER TABLE orders ADD COLUMN shipping_address TEXT NULL"); } catch(Exception $e) {}
+try { $pdo->exec("ALTER TABLE orders ADD COLUMN payment_method VARCHAR(100) DEFAULT 'whatsapp'"); } catch(Exception $e) {}
+
+$userCols = [
+    'city'         => "VARCHAR(100) DEFAULT 'São Paulo'",
+    'state'        => "VARCHAR(10) DEFAULT 'SP'",
+    'phone'        => "VARCHAR(50) DEFAULT ''",
+    'address'      => "VARCHAR(255) DEFAULT ''",
+    'number'       => "VARCHAR(50) DEFAULT ''",
+    'neighborhood' => "VARCHAR(100) DEFAULT ''",
+    'zipcode'      => "VARCHAR(20) DEFAULT ''",
+    'document'     => "VARCHAR(50) DEFAULT ''"
+];
+foreach($userCols as $c => $def) {
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN $c $def"); } catch(Exception $e) {}
+}
+
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS customer_payments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        payment_method VARCHAR(50) DEFAULT 'Saldo/Manual',
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+} catch(Exception $e) {}
+
 
 // Helper para tradução de status de rastreio
 function getMeStatusTranslation($status) {
