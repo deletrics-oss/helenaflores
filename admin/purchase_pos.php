@@ -4,8 +4,41 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/user_auth.php';
 isAdmin();
 
+// Ensure tables exist
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS suppliers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        contact_name VARCHAR(100) DEFAULT '',
+        phone VARCHAR(50) DEFAULT '',
+        email VARCHAR(100) DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    
+    $pdo->exec("CREATE TABLE IF NOT EXISTS purchase_orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        supplier_id INT DEFAULT 0,
+        total_amount DECIMAL(10,2) DEFAULT 0.00,
+        status VARCHAR(50) DEFAULT 'completed',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS purchase_order_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        purchase_order_id INT NOT NULL,
+        product_id INT DEFAULT 0,
+        variation_id INT DEFAULT NULL,
+        quantity INT DEFAULT 1,
+        unit_cost DECIMAL(10,2) DEFAULT 0.00,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+} catch (Exception $e) {}
+
 // Fetch suppliers for the sidebar
-$suppliers = $pdo->query("SELECT * FROM suppliers ORDER BY name")->fetchAll();
+$suppliers = [];
+try {
+    $suppliers = $pdo->query("SELECT * FROM suppliers ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
 
 // AJAX: Search Products (with Cost Price History)
 if (isset($_GET['search'])) {
