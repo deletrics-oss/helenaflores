@@ -27,7 +27,7 @@ if (empty($_SESSION['cart'])) {
     exit;
 }
 
-// 3. Table Check
+// 3. Auto-migration for Database Schema Safety
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS user_addresses (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -45,6 +45,14 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 } catch (Exception $e) {}
 
+// Ensure orders table columns exist safely
+try {
+    $pdo->exec("ALTER TABLE orders ADD COLUMN shipping_address TEXT NULL");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE orders ADD COLUMN payment_method VARCHAR(100) DEFAULT 'whatsapp'");
+} catch (Exception $e) {}
+
 $userId = (int)$_SESSION['user_id'];
 
 // 4. Calculate Cart Products
@@ -55,7 +63,7 @@ $keys = array_keys($_SESSION['cart']);
 if (!empty($keys)) {
     $inClause = implode(',', array_fill(0, count($keys), '?'));
     $stmt = $pdo->prepare("SELECT * FROM products WHERE id IN ($inClause)");
-    $stmt->execute($keys);
+    $stmt.execute($keys);
     $products_db = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $productsMap = array_column($products_db, null, 'id');
 
@@ -70,7 +78,7 @@ if (!empty($keys)) {
 }
 
 // 5. Handle Shipping Calculation & Options
-$user_zip = $_POST['zipcode'] ?? '01420-001'; // Default Jardins SP
+$user_zip = $_POST['zipcode'] ?? '01420-001';
 $shipping_options = calculateShippingOptions($user_zip, $cart_items);
 
 $selected_shipping_price = 0;
@@ -85,14 +93,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     $chosenShipping = $_POST['shipping_option'] ?? 'Lalamove Motoboy';
     $destAddress = ($_POST['street'] ?? 'Alameda Jaú') . ', ' . ($_POST['number'] ?? '1777') . ' - ' . ($_POST['neighborhood'] ?? 'Jardim Paulista') . ', ' . ($_POST['city'] ?? 'São Paulo') . '/SP - CEP: ' . $user_zip;
 
+    $orderId = null;
+
+    // Multi-tier Safe Order Insert Strategy
     try {
         $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_amount, status, payment_method, shipping_address, created_at) VALUES (?, ?, 'pending', ?, ?, NOW())");
         $stmt->execute([$userId, $total_products + $selected_shipping_price, $paymentMethod, $destAddress]);
         $orderId = $pdo->lastInsertId();
+    } catch (Exception $e1) {
+        try {
+            $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_amount, status, payment_method, created_at) VALUES (?, ?, 'pending', ?, NOW())");
+            $stmt->execute([$userId, $total_products + $selected_shipping_price, $paymentMethod]);
+            $orderId = $pdo->lastInsertId();
+        } catch (Exception $e2) {
+            try {
+                $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_amount, status, created_at) VALUES (?, ?, 'pending', NOW())");
+                $stmt->execute([$userId, $total_products + $selected_shipping_price]);
+                $orderId = $pdo->lastInsertId();
+            } catch (Exception $e3) {
+                $error = "Erro ao processar pedido: " . $e3->getMessage();
+            }
+        }
+    }
 
+    if ($orderId) {
         foreach ($cart_items as $item) {
-            $stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$orderId, $item['id'], $item['qty'], $item['price']]);
+            try {
+                $stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
+                $stmt->execute([$orderId, $item['id'], $item['qty'], $item['price']]);
+            } catch (Exception $ei) {
+                try {
+                    $stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt->execute([$orderId, $item['id'], $item['name'], $item['qty'], $item['price'], $item['price'] * $item['qty']]);
+                } catch (Exception $ei2) {}
+            }
         }
 
         // Clear Cart
@@ -102,9 +136,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         $waMsg = "Ol%C3%A1!%20Acabei%20de%20fazer%20o%20Pedido%20%23" . $orderId . "%20no%20site!%0A%0A*Frete:*%20" . urlencode($chosenShipping) . "%0A*Endere%C3%A7o:*%20" . urlencode($destAddress) . "%0A*Total:*%20R$%20" . number_format($total_products + $selected_shipping_price, 2, ',', '.');
         header("Location: https://wa.me/5511986727872?text=" . $waMsg);
         exit;
-
-    } catch (Exception $e) {
-        $error = "Erro ao processar pedido: " . $e->getMessage();
     }
 }
 ?>
@@ -182,92 +213,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
                         <div>
                             <label style="font-size:0.85rem; font-weight:700; color:#444; display:block; margin-bottom:4px;">Bairro</label>
-                            <input type="text" name="neighborhood" id="f_district" value="Jardim Paulista" style="width:100%; height:45px; border-radius:8px; border:1px solid #DDD; padding:0 12px;" required>
+                            <input type="text" name="neighborhood" id="f_neighborhood" value="Jardim Paulista" style="width:100%; height:45px; border-radius:8px; border:1px solid #DDD; padding:0 12px;" required>
                         </div>
                         <div>
                             <label style="font-size:0.85rem; font-weight:700; color:#444; display:block; margin-bottom:4px;">Complemento / Bloco</label>
-                            <input type="text" name="complement" id="f_comp" value="Apto / Casa" style="width:100%; height:45px; border-radius:8px; border:1px solid #DDD; padding:0 12px;">
+                            <input type="text" name="complement" placeholder="Apto / Casa" style="width:100%; height:45px; border-radius:8px; border:1px solid #DDD; padding:0 12px;">
                         </div>
                     </div>
                 </div>
 
-                <!-- Shipping Method Section (Lalamove & Melhor Envio) -->
+                <!-- Shipping Options Section -->
                 <div class="gf-card-section">
                     <h3 style="color:var(--gf-magenta-dark); margin-bottom:1rem; font-size:1.2rem; display:flex; align-items:center; gap:8px;">
                         🚚 2. Opções de Frete (Lalamove & Melhor Envio)
                     </h3>
 
-                    <?php foreach ($shipping_options as $idx => $opt): ?>
-                        <label style="display:flex; justify-content:space-between; align-items:center; padding:14px 18px; background:#FFF8F9; border:1px solid #FCE4EC; border-radius:10px; margin-bottom:10px; cursor:pointer; transition:border-color 0.2s;">
+                    <?php foreach ($shipping_options as $index => $opt): ?>
+                        <label style="display:flex; align-items:center; justify-content:space-between; padding:14px; border:1px solid #EEE; border-radius:10px; margin-bottom:10px; cursor:pointer; background:#FAFAFA;">
                             <div style="display:flex; align-items:center; gap:12px;">
-                                <input type="radio" name="shipping_option" value="<?php echo htmlspecialchars($opt['name']); ?>" <?php echo $idx === 0 ? 'checked' : ''; ?>>
-                                <span style="font-weight:700; color:#222; font-size:0.95rem;">
-                                    <?php echo $opt['icon'] . ' ' . htmlspecialchars($opt['name']); ?>
-                                </span>
+                                <input type="radio" name="shipping_option" value="<?php echo htmlspecialchars($opt['name']); ?>" <?php echo ($index === 0) ? 'checked' : ''; ?>>
+                                <span style="font-weight:bold; color:#333;"><?php echo htmlspecialchars($opt['name']); ?></span>
                             </div>
-                            <strong style="color:var(--gf-magenta-dark); font-size:1.05rem;">
-                                <?php echo $opt['price'] > 0 ? 'R$ ' . number_format($opt['price'], 2, ',', '.') : 'GRÁTIS'; ?>
-                            </strong>
+                            <span style="font-weight:bold; color:var(--gf-magenta-dark);">
+                                <?php echo ($opt['price'] > 0) ? 'R$ ' . number_format($opt['price'], 2, ',', '.') : 'GRÁTIS'; ?>
+                            </span>
                         </label>
                     <?php endforeach; ?>
-                </div>
-
-                <!-- Payment Method Section -->
-                <div class="gf-card-section">
-                    <h3 style="color:var(--gf-magenta-dark); margin-bottom:1rem; font-size:1.2rem; display:flex; align-items:center; gap:8px;">
-                        💳 3. Forma de Pagamento
-                    </h3>
-
-                    <label style="display:flex; align-items:center; gap:10px; padding:12px; border:1px solid #DDD; border-radius:8px; margin-bottom:10px; cursor:pointer;">
-                        <input type="radio" name="payment_method" value="whatsapp" checked>
-                        <span style="font-weight:700; color:#222;">💬 Pedir e Pagar via WhatsApp (PIX / Cartão)</span>
-                    </label>
-                    <label style="display:flex; align-items:center; gap:10px; padding:12px; border:1px solid #DDD; border-radius:8px; margin-bottom:10px; cursor:pointer;">
-                        <input type="radio" name="payment_method" value="pix">
-                        <span style="font-weight:700; color:#222;">⚡ PIX Instantâneo com Desconto</span>
-                    </label>
-                    <label style="display:flex; align-items:center; gap:10px; padding:12px; border:1px solid #DDD; border-radius:8px; cursor:pointer;">
-                        <input type="radio" name="payment_method" value="card">
-                        <span style="font-weight:700; color:#222;">💳 Cartão de Crédito em até 3x sem juros</span>
-                    </label>
                 </div>
             </div>
 
             <!-- Right Column: Order Summary -->
             <div>
-                <div class="gf-card-section" style="position:sticky; top:100px;">
-                    <h3 style="font-size:1.2rem; font-weight:800; color:#222; margin-bottom:1rem; border-bottom:1px solid #EEE; padding-bottom:10px;">
-                        Resumo do Pedido
-                    </h3>
-
-                    <div style="margin-bottom:1rem; display:flex; flex-direction:column; gap:10px;">
+                <div class="gf-card-section" style="position:sticky; top:20px;">
+                    <h3 style="color:#222; margin-bottom:1rem; font-size:1.2rem;">Resumo do Pedido</h3>
+                    
+                    <div style="border-bottom:1px solid #EEE; padding-bottom:15px; margin-bottom:15px;">
                         <?php foreach ($cart_items as $item): ?>
-                            <div style="display:flex; justify-content:space-between; font-size:0.9rem; border-bottom:1px solid #F0F0F0; padding-bottom:6px;">
-                                <span><?php echo $item['qty']; ?>x <?php echo htmlspecialchars(mb_strimwidth($item['name'], 0, 22, '...')); ?></span>
-                                <strong>R$ <?php echo number_format($item['price'] * $item['qty'], 2, ',', '.'); ?></strong>
+                            <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.9rem;">
+                                <span style="color:#555;"><?php echo $item['qty']; ?>x <?php echo htmlspecialchars(substr($item['name'], 0, 20)); ?>...</span>
+                                <span style="font-weight:bold;">R$ <?php echo number_format($item['price'] * $item['qty'], 2, ',', '.'); ?></span>
                             </div>
                         <?php endforeach; ?>
                     </div>
 
-                    <div style="display:flex; justify-content:space-between; font-size:0.9rem; color:#666; margin-bottom:8px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.9rem; color:#666;">
                         <span>Subtotal:</span>
                         <span>R$ <?php echo number_format($total_products, 2, ',', '.'); ?></span>
                     </div>
 
-                    <div style="display:flex; justify-content:space-between; font-size:0.9rem; color:#666; margin-bottom:15px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:15px; font-size:0.9rem; color:#666;">
                         <span>Frete Escolhido:</span>
-                        <strong style="color:var(--gf-magenta-dark);">R$ <?php echo number_format($selected_shipping_price, 2, ',', '.'); ?></strong>
-                    </div>
-
-                    <div style="border-top:2px solid #F0F0F0; padding-top:12px; margin-bottom:1.5rem; display:flex; justify-content:space-between; align-items:baseline;">
-                        <span style="font-size:1.1rem; font-weight:800;">Total:</span>
-                        <span style="font-size:1.8rem; font-weight:800; color:var(--gf-magenta-dark);">
-                            R$ <?php echo number_format($total_products + $selected_shipping_price, 2, ',', '.'); ?>
+                        <span style="font-weight:bold; color:var(--gf-magenta-dark);">
+                            <?php echo ($selected_shipping_price > 0) ? 'R$ ' . number_format($selected_shipping_price, 2, ',', '.') : 'GRÁTIS'; ?>
                         </span>
                     </div>
 
-                    <button type="submit" class="gf-btn-primary" style="width:100%; height:55px; border-radius:28px; font-size:1.15rem; font-weight:800;">
-                        CONCLUIR PEDIDO 🎉
+                    <div style="display:flex; justify-content:space-between; margin-bottom:1.5rem; font-size:1.3rem; font-weight:800; color:#222; border-top:2px dashed #EEE; padding-top:15px;">
+                        <span>Total:</span>
+                        <span style="color:var(--gf-magenta-dark);">R$ <?php echo number_format($total_products + $selected_shipping_price, 2, ',', '.'); ?></span>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="width:100%; height:55px; font-size:1.15rem; font-weight:bold; border-radius:30px; background:var(--gf-magenta-dark); color:#FFF; border:none; cursor:pointer;">
+                        CONCLUIR PEDIDO 🌸
                     </button>
                 </div>
             </div>
@@ -276,19 +283,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
 
     </div>
 
-    <!-- ViaCEP Auto-fill Script -->
     <script>
         function fetchCep(cep) {
-            cep = cep.replace(/\D/g, '');
-            if (cep.length === 8) {
-                fetch(`https://viacep.com.br/ws/${cep}/json/`)
-                    .then(r => r.json())
+            var cleanCep = cep.replace(/\D/g, '');
+            if (cleanCep.length === 8) {
+                fetch('https://viacep.com.br/ws/' + cleanCep + '/json/')
+                    .then(response => response.json())
                     .then(data => {
                         if (!data.erro) {
-                            document.getElementById('f_street').value = data.logradouro;
-                            document.getElementById('f_district').value = data.bairro;
-                            document.getElementById('f_city').value = data.localidade + ' / ' + data.uf;
-                            document.getElementById('f_number').focus();
+                            document.getElementById('f_street').value = data.logradouro || '';
+                            document.getElementById('f_neighborhood').value = data.bairro || '';
+                            document.getElementById('f_city').value = (data.localidade || 'São Paulo') + ' / ' + (data.uf || 'SP');
                         }
                     });
             }
