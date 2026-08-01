@@ -1,5 +1,5 @@
 <?php
-// includes/header_public.php — Helena Flores (Estilo Giuliana Flores com Login & Cadastro Integrados)
+// includes/header_public.php — Helena Flores (Estilo Giuliana Flores com Login, Cadastro, Perfil e Endereços)
 $is_logged = isset($_SESSION['user_id']);
 $user_name = '';
 
@@ -54,8 +54,11 @@ $baseUrl = defined('BASE_URL') ? BASE_URL : '';
         <!-- Right User Actions -->
         <nav style="display:flex; gap:12px; align-items:center;">
             <?php if ($is_logged): ?>
-                <a href="<?php echo $baseUrl; ?>/my-orders.php" style="color:#333; font-weight:700; text-decoration:none; font-size:0.88rem; display:flex; align-items:center; gap:4px;">
+                <a href="<?php echo $baseUrl; ?>/profile.php" style="color:#333; font-weight:700; text-decoration:none; font-size:0.88rem; display:flex; align-items:center; gap:4px;" title="Ver Meu Perfil e Dados">
                     👤 Olá, <?php echo htmlspecialchars($user_name); ?>
+                </a>
+                <a href="<?php echo $baseUrl; ?>/my-addresses.php" style="color:#555; font-weight:600; text-decoration:none; font-size:0.85rem;" title="Meus Endereços Salvos">
+                    🏠 Endereços
                 </a>
                 <a href="<?php echo $baseUrl; ?>/my-orders.php" style="color:var(--gf-magenta-dark); font-weight:700; text-decoration:none; font-size:0.88rem;">
                     📦 Meus Pedidos
@@ -110,9 +113,9 @@ $baseUrl = defined('BASE_URL') ? BASE_URL : '';
         <i>💬</i>
         <span>WhatsApp</span>
     </a>
-    <a href="<?php echo $baseUrl; ?>/<?php echo $is_logged ? 'my-orders.php' : 'login.php'; ?>" class="bottom-nav-item">
+    <a href="<?php echo $baseUrl; ?>/<?php echo $is_logged ? 'profile.php' : 'login.php'; ?>" class="bottom-nav-item">
         <i>👤</i>
-        <span><?php echo $is_logged ? 'Pedidos' : 'Entrar'; ?></span>
+        <span><?php echo $is_logged ? 'Perfil' : 'Entrar'; ?></span>
     </a>
 </div>
 
