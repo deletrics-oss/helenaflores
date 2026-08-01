@@ -22,66 +22,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
 // AJAX: Calculate shipping for an order
 if (isset($_GET['ajax_quote']) && isset($_GET['order_id'])) {
     header('Content-Type: application/json');
-    $oid = (int) $_GET['order_id'];
-    $order = $pdo->query("SELECT o.*, u.zipcode as dest_zip, u.name as customer_name, u.address, u.number, u.complement, u.neighborhood, u.city, u.state, u.document, u.phone FROM orders o JOIN users u ON o.user_id = u.id WHERE o.id = $oid")->fetch();
-    if (!$order) { echo json_encode(['error' => 'Pedido não encontrado']); exit; }
-    
-    if (empty($order['dest_zip'])) {
-        echo json_encode(['error' => '❌ Erro: O cliente deste pedido não possui CEP cadastrado. Verifique o cadastro do cliente antes de cotar o frete.']);
-        exit;
-    }
-    
-    $items = $pdo->query("SELECT oi.*, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.price as base_price FROM order_items oi LEFT JOIN products p ON oi.product_id = p.id WHERE oi.order_id = $oid")->fetchAll();
-    
-    $fromZip = '';
-    try { $fromZip = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'me_from_zipcode'")->fetchColumn(); } catch(Exception $e) {}
-    if (!$fromZip) $fromZip = '03611060'; // Default São Paulo SP (Vila Laís)
-    
-    // Consolidate into a single volume to match cart payload and get realistic quotes
-    $totalWeight = 0;
-    $maxW = 0; $maxL = 0; $totalH = 0;
-    foreach ($items as $it) {
-        $totalWeight += ($it['weight_kg'] ?? 0.3) * $it['quantity'];
-        $w = $it['width_cm'] ?? 15; $l = $it['length_cm'] ?? 20; $h = $it['height_cm'] ?? 10;
-        if ($w > $maxW) $maxW = $w;
-        if ($l > $maxL) $maxL = $l;
-        if ($h > $totalH) $totalH = $h; // Use a maior altura, não some todas
-    }
-    
-    // Check if user forced custom dimensions/insurance via UI
-    $forceW = isset($_GET['box_w']) ? (int) $_GET['box_w'] : 0;
-    $forceH = isset($_GET['box_h']) ? (int) $_GET['box_h'] : 0;
-    $forceL = isset($_GET['box_l']) ? (int) $_GET['box_l'] : 0;
-    $forceWt = isset($_GET['box_wt']) ? (float) $_GET['box_wt'] : 0;
-    $forceIns = isset($_GET['box_ins']) && $_GET['box_ins'] !== '' ? (float) $_GET['box_ins'] : -1;
-    
-    $finalW = ($forceW > 0) ? $forceW : max(11, (int)$maxW);
-    $finalH = ($forceH > 0) ? $forceH : max(4, (int)$totalH);
-    $finalL = ($forceL > 0) ? $forceL : max(16, (int)$maxL);
-    $finalWt = ($forceWt > 0) ? $forceWt : max(0.3, $totalWeight);
-    $finalIns = ($forceIns >= 0) ? $forceIns : min((float)$order['total_amount'], 1500.00);
-    
-    $products = [
-        [
-            'id' => '1',
-            'width' => $finalW,
-            'height' => $finalH,
-            'length' => $finalL,
-            'weight' => $finalWt,
-            'insurance_value' => (float)$finalIns,
-            'quantity' => 1
-        ]
-    ];
-    
-    $result = $me->calculateShipping($fromZip, $order['dest_zip'], $products);
-    
-    // Log for debug
-    if (empty($result) || isset($result['error']) || isset($result['message'])) {
-        $logMsg = date('[Y-m-d H:i:s] ') . "ME QUOTE FAIL - From: $fromZip, To: " . $order['dest_zip'] . " - Result: " . json_encode($result) . "\n";
-        file_put_contents(__DIR__ . '/../me_debug.log', $logMsg, FILE_APPEND);
-    }
+    try {
+        $oid = (int) $_GET['order_id'];
+        $order = $pdo->query("SELECT o.*, COALESCE(u.zipcode, '') as dest_zip, COALESCE(u.name, 'Cliente') as customer_name FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.id = $oid")->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            echo json_encode(['quotes' => ['error' => 'Pedido não encontrado']]);
+            exit;
+        }
 
-    echo json_encode(['quotes' => $result, 'order' => $order, 'debug_from' => $fromZip]);
+        $destZip = preg_replace('/\D/', '', $order['dest_zip'] ?? '');
+        if (empty($destZip) && !empty($order['shipping_address'])) {
+            if (preg_match('/(\d{5}-?\d{3})/', $order['shipping_address'], $matches)) {
+                $destZip = preg_replace('/\D/', '', $matches[1]);
+            }
+        }
+        if (empty($destZip)) {
+            $destZip = '01420001'; // Default São Paulo SP (Jardins)
+        }
+
+        $fromZip = '03611060';
+        try {
+            $f = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'me_from_zipcode'")->fetchColumn();
+            if ($f) $fromZip = preg_replace('/\D/', '', $f);
+        } catch(Exception $e) {}
+
+        // Check if user forced custom dimensions/insurance via UI
+        $forceW = isset($_GET['box_w']) ? (int) $_GET['box_w'] : 0;
+        $forceH = isset($_GET['box_h']) ? (int) $_GET['box_h'] : 0;
+        $forceL = isset($_GET['box_l']) ? (int) $_GET['box_l'] : 0;
+        $forceWt = isset($_GET['box_wt']) ? (float) $_GET['box_wt'] : 0;
+        $forceIns = isset($_GET['box_ins']) && $_GET['box_ins'] !== '' ? (float) $_GET['box_ins'] : -1;
+
+        $finalW = ($forceW > 0) ? $forceW : 15;
+        $finalH = ($forceH > 0) ? $forceH : 10;
+        $finalL = ($forceL > 0) ? $forceL : 20;
+        $finalWt = ($forceWt > 0) ? $forceWt : 0.5;
+        $finalIns = ($forceIns >= 0) ? $forceIns : min((float)($order['total_amount'] ?? 100), 1500.00);
+
+        $products = [
+            [
+                'id' => '1',
+                'width' => $finalW,
+                'height' => $finalH,
+                'length' => $finalL,
+                'weight' => $finalWt,
+                'insurance_value' => (float)$finalIns,
+                'quantity' => 1
+            ]
+        ];
+
+        $result = $me->calculateShipping($fromZip, $destZip, $products);
+
+        echo json_encode(['quotes' => $result ?: [], 'order' => $order, 'debug_from' => $fromZip]);
+    } catch (Exception $e) {
+        echo json_encode(['quotes' => ['error' => 'Erro ao cotar frete: ' . $e->getMessage()]]);
+    }
     exit;
 }
 
