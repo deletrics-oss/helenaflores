@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const CSV_USER_DATA = `ID;Nome;Link;Imagem;Preço;Categoria;Descrição
+const CSV_TEXT = `ID;Nome;Link;Imagem;Preço;Categoria;Descrição
 115;Arranjo;"https://www.fightarcade.com.br/_catalogo referencia/product.php?id=115";"https://www.fightarcade.com.br/_catalogo referencia/assets/uploads/102-arranjo.jpg";250,00;"Arranjos & Vasos";"2 gerberas laranjas 1 lírio amarelo 3 margaridas 6 astromelias 3 rosas brancas Box"
 129;"Arranjo Branco com Flores Finas";"https://www.fightarcade.com.br/_catalogo referencia/product.php?id=129";"https://www.fightarcade.com.br/_catalogo referencia/assets/uploads/117-arranjo-branco-com-flores-finas.jpg";215,00;"Arranjos & Vasos";"4 Boca de Leão branca 3 hortênsia 4 astromelias 2 Galhos de margaridas 2 galhos de lisiantus Vaso de vidro"
 105;"Arranjo com 2 Rosas Colombiana";"https://www.fightarcade.com.br/_catalogo referencia/product.php?id=105";"https://www.fightarcade.com.br/_catalogo referencia/assets/uploads/092-arranjo-com-2-rosas-colombiana.jpg";90,00;"Rosas Colombianas";"Arranjo com 2 Rosas Colombiana"
@@ -130,3 +130,131 @@ const CSV_USER_DATA = `ID;Nome;Link;Imagem;Preço;Categoria;Descrição
 66;"Vinho Reservado Carmenere";"https://www.fightarcade.com.br/_catalogo referencia/product.php?id=66";"https://www.fightarcade.com.br/_catalogo referencia/assets/uploads/053-vinho-reservado-carmenere.jpg";100,00;"KITS & Presentes";"Vinho Concha y Toro Reservado Carmenere 750ml"
 54;"Violeta na cesta";"https://www.fightarcade.com.br/_catalogo referencia/product.php?id=54";"https://www.fightarcade.com.br/_catalogo referencia/assets/uploads/040-violeta-na-cesta.jpg";70,00;"Cestas Personalizadas";"Vaso de violeta na cesta"
 `;
+
+function parseCSV(content) {
+    const lines = content.split('\n');
+    const result = [];
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        const parts = line.split(';');
+        if (parts.length >= 7) {
+            const id = parseInt(parts[0].replace(/"/g, '').trim());
+            const name = parts[1].replace(/"/g, '').trim();
+            const link = parts[2].replace(/"/g, '').trim();
+            let img = parts[3].replace(/"/g, '').trim();
+            const priceStr = parts[4].replace(/"/g, '').replace('.', '').replace(',', '.').trim();
+            const category = parts[5].replace(/"/g, '').trim();
+            const desc = parts[6].replace(/"/g, '').trim();
+
+            if (img.includes('assets/uploads/')) {
+                img = img.split('assets/uploads/')[1];
+            }
+
+            result.push({
+                id: id,
+                name: name,
+                slug: name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''),
+                price: parseFloat(priceStr) || 150,
+                description: desc,
+                image_path: img,
+                category: category
+            });
+        }
+    }
+    return result;
+}
+
+const parsedProducts = parseCSV(CSV_TEXT);
+
+console.log(`Parseados ${parsedProducts.length} produtos do CSV oficial!`);
+
+let phpScript = `<?php
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes/db.php';
+
+echo "<div style='font-family:sans-serif; padding:20px; background:#FFF8F9; border-radius:12px;'>";
+echo "<h2 style='color:#C2185B;'>🌸 Sincronização Direta de Catálogo (" . count($parsedProducts) . " Produtos)</h2>";
+
+try {
+    $catMap = [];
+    $stmtCat = $pdo->prepare("INSERT INTO categories (name, slug, active) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE name=VALUES(name)");
+    $catList = [
+        'Rosas Colombianas' => 'rosas-colombianas',
+        'Cestas Personalizadas' => 'cestas-personalizadas',
+        'Buquês de Luxo' => 'buques-de-luxo',
+        'Arranjos & Vasos' => 'arranjos-e-vasos',
+        'KITS & Presentes' => 'kits-e-presentes',
+        'Orquídeas & Plantas' => 'orquideas-e-plantas'
+    ];
+
+    foreach ($catList as $catName => $catSlug) {
+        $stmtCat->execute([$catName, $catSlug]);
+        $stmtGet = $pdo->prepare("SELECT id FROM categories WHERE name = ?");
+        $stmtGet->execute([$catName]);
+        $catMap[$catName] = $stmtGet->fetchColumn();
+    }
+
+    $products = `;
+
+phpScript += JSON.stringify(parsedProducts, null, 4);
+
+phpScript += `;
+
+    $stmtInsert = $pdo->prepare("INSERT INTO products 
+        (id, category_id, name, slug, description, sku, price, image_path, active, stock_qty, featured) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 999, ?) 
+        ON DUPLICATE KEY UPDATE 
+            category_id = VALUES(category_id),
+            name = VALUES(name),
+            slug = VALUES(slug),
+            price = VALUES(price),
+            description = VALUES(description),
+            image_path = VALUES(image_path),
+            active = 1");
+
+    $count = 0;
+    foreach ($products as $idx => $p) {
+        $id = $p['id'];
+        $catName = $p['category'] ?? 'Rosas Colombianas';
+        $catId = $catMap[$catName] ?? $catMap['Rosas Colombianas'];
+        $name = trim($p['name']);
+        $slug = $p['slug'];
+        $desc = trim($p['description']);
+        $price = floatval($p['price']);
+        $imagePath = $p['image_path'];
+        $sku = 'HF-WA-' . strtoupper(substr(md5($name), 0, 6));
+        $featured = ($idx < 20) ? 1 : 0;
+
+        $stmtInsert->execute([
+            $id,
+            $catId,
+            $name,
+            $slug,
+            $desc,
+            $sku,
+            $price,
+            $imagePath,
+            $featured
+        ]);
+        $count++;
+    }
+
+    echo "<div style='background:#E8F5E9; color:#2E7D32; padding:15px; border-radius:8px; margin-top:15px;'>";
+    echo "🎉 <strong>SUCESSO ABSOLUTO! {$count} Produtos Alinhados e Sincronizados com IDs e Imagens!</strong>";
+    echo "</div>";
+
+} catch (Exception $e) {
+    echo "<div style='background:#FFEBEE; color:#C2185B; padding:15px; border-radius:8px;'>";
+    echo "❌ Erro ao sincronizar: " . htmlspecialchars($e->getMessage());
+    echo "</div>";
+}
+
+echo "</div>";
+`;
+
+fs.writeFileSync(path.resolve(__dirname, '../import_produtos400.php'), phpScript, 'utf-8');
+fs.writeFileSync(path.resolve(__dirname, '../seed_helena_flores.php'), phpScript, 'utf-8');
+
+console.log('🎉 import_produtos400.php e seed_helena_flores.php gerados com sucesso!');
