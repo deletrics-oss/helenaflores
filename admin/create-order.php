@@ -36,9 +36,20 @@ if (isset($_GET['ajax_create_customer'])) {
     $raw_pass = substr(str_shuffle('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'), 0, 8);
     $password = password_hash($raw_pass, PASSWORD_DEFAULT);
 
+    // Auto-migration for users columns
+    $userCols = [
+        'is_vip' => "TINYINT(1) DEFAULT 0",
+        'is_lead' => "TINYINT(1) DEFAULT 0",
+        'document' => "VARCHAR(50) DEFAULT ''",
+        'phone' => "VARCHAR(50) DEFAULT ''"
+    ];
+    foreach ($userCols as $c => $def) {
+        try { $pdo->exec("ALTER TABLE users ADD COLUMN $c $def"); } catch (Exception $e) {}
+    }
+
     try {
-        $sql = "INSERT INTO users (name, email, password, document, phone, role, is_vip, is_lead, source) 
-                VALUES (:name, :email, :pass, :doc, :phone, 'customer', 0, 0, 'manual')";
+        $sql = "INSERT INTO users (name, email, password, document, phone, role) 
+                VALUES (:name, :email, :pass, :doc, :phone, 'customer')";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
             ':name' => $name,
