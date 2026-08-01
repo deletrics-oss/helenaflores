@@ -13,6 +13,19 @@ if (!isset($_SESSION['cart'])) {
     $_SESSION['cart'] = [];
 }
 
+// Handle AJAX Add to Cart (Instant without page reload)
+if (isset($_GET['action']) && $_GET['action'] === 'ajax_add') {
+    header('Content-Type: application/json');
+    $pId = (int)($_GET['product_id'] ?? $_POST['product_id'] ?? 0);
+    $qty = (int)($_GET['qty'] ?? $_POST['qty'] ?? 1);
+    if ($pId > 0 && $qty > 0) {
+        $_SESSION['cart'][$pId] = ($_SESSION['cart'][$pId] ?? 0) + $qty;
+    }
+    $totalCount = array_sum($_SESSION['cart']);
+    echo json_encode(['success' => true, 'total_count' => $totalCount]);
+    exit;
+}
+
 // Handle Add / Remove / Update Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -131,7 +144,7 @@ if (!empty($_SESSION['cart'])) {
                             <?php foreach ($cartItems as $item): ?>
                                 <?php 
                                 $p = $item['product'];
-                                $img = $p['image_path'] ? (strpos($p['image_path'], 'http') === 0 ? $p['image_path'] : $baseUrl . '/assets/uploads/' . $p['image_path']) : 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=600&q=80';
+                                $img = get_product_image_url($p['image_path'], $p['name']);
                                 ?>
                                 <tr>
                                     <td data-label="Produto">
