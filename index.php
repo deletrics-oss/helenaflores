@@ -253,17 +253,17 @@ $baseUrl = defined('BASE_URL') ? BASE_URL : '';
                                 </div>
                             </div>
 
-                            <div class="gf-card-actions">
+                            <div class="gf-card-actions" style="display:flex; gap:8px; align-items:center;">
                                 <form action="cart.php" method="POST" style="flex:1;">
                                     <input type="hidden" name="action" value="add">
                                     <input type="hidden" name="product_id" value="<?php echo $p['id']; ?>">
                                     <input type="hidden" name="qty" value="1">
-                                    <button class="gf-btn-buy">Comprar 🛒</button>
+                                    <button class="gf-btn-buy" type="submit">Comprar 🛒</button>
                                 </form>
-                                <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20pedir%20o%20<?php echo urlencode($p['name']); ?>%20(R$%20<?php echo number_format($p['price'], 2, ',', '.'); ?>)" 
-                                   target="_blank" class="gf-btn-wa-icon" title="Pedir no WhatsApp">
-                                    💬
-                                </a>
+                                <button onclick="addCartAjax(event, <?php echo $p['id']; ?>)" type="button" title="Adicionar 1 ao Carrinho" 
+                                        style="width:42px; height:42px; border-radius:50%; background:#25D366; color:#FFF; border:none; font-size:1.5rem; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 10px rgba(37,211,102,0.3); transition:transform 0.2s ease;">
+                                    +
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -391,17 +391,22 @@ $baseUrl = defined('BASE_URL') ? BASE_URL : '';
                                 </div>
                             </div>
 
-                            <div class="gf-card-actions">
+                            <div class="gf-card-actions" style="display:flex; gap:8px; align-items:center;">
                                 <form action="cart.php" method="POST" style="flex:1;">
                                     <input type="hidden" name="action" value="add">
                                     <input type="hidden" name="product_id" value="<?php echo $p['id']; ?>">
                                     <input type="hidden" name="qty" value="1">
-                                    <button class="gf-btn-buy">Comprar 🛒</button>
+                                    <button class="gf-btn-buy" type="submit">Comprar 🛒</button>
                                 </form>
-                                <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20pedir%20o%20<?php echo urlencode($p['name']); ?>%20(R$%20<?php echo number_format($p['price'], 2, ',', '.'); ?>)" 
-                                   target="_blank" class="gf-btn-wa-icon" title="Pedir no WhatsApp">
-                                    💬
-                                </a>
+                                <form action="cart.php" method="POST" style="display:inline-block;">
+                                    <input type="hidden" name="action" value="add">
+                                    <input type="hidden" name="product_id" value="<?php echo $p['id']; ?>">
+                                    <input type="hidden" name="qty" value="1">
+                                    <button type="submit" title="Adicionar 1 ao Carrinho" 
+                                            style="width:42px; height:42px; border-radius:50%; background:#25D366; color:#FFF; border:none; font-size:1.5rem; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 10px rgba(37,211,102,0.3);">
+                                        +
+                                    </button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -461,6 +466,42 @@ $baseUrl = defined('BASE_URL') ? BASE_URL : '';
         </div>
 
     </div>
+
+    <!-- Toast Notification Container & Ajax Add to Cart Script -->
+    <div id="cartToast" style="position:fixed; bottom:30px; right:30px; background:#C2185B; color:#FFF; padding:15px 25px; border-radius:30px; font-weight:800; font-size:1rem; box-shadow:0 10px 25px rgba(194,24,91,0.4); display:none; z-index:999999;">
+        🌸 Produto adicionado ao Carrinho!
+    </div>
+
+    <script>
+        function addCartAjax(event, productId) {
+            if (event) event.preventDefault();
+            
+            fetch(`cart.php?action=ajax_add&product_id=${productId}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        const toast = document.getElementById('cartToast');
+                        toast.style.display = 'block';
+                        toast.innerText = `🌸 Produto adicionado ao Carrinho! (${data.total_count})`;
+                        
+                        setTimeout(() => {
+                            toast.style.display = 'none';
+                        }, 2500);
+
+                        // Update Cart Header Buttons
+                        const cartBtns = document.querySelectorAll('a[href*="cart.php"]');
+                        cartBtns.forEach(btn => {
+                            if (btn.innerText.includes('Carrinho')) {
+                                btn.innerText = `🛒 Carrinho (${data.total_count})`;
+                            }
+                        });
+                    }
+                })
+                .catch(() => {
+                    window.location.href = `cart.php?action=add&product_id=${productId}`;
+                });
+        }
+    </script>
 
     <?php include __DIR__ . '/includes/footer_public.php'; ?>
 
