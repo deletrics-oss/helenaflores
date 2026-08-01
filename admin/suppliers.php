@@ -251,7 +251,8 @@ $suppliers = $stmt->fetchAll();
 
     <!-- Modal: Cadastro Fornecedor -->
     <div id="addModal" class="modal-vip">
-        <div class="modal-vip-content">
+        <div class="modal-vip-content" style="position:relative;">
+            <span class="close-vip" onclick="document.getElementById('addModal').style.display='none'" style="position:absolute; top:15px; right:20px; font-size:1.8rem; font-weight:bold; color:#FFECB3; cursor:pointer;">&times;</span>
             <h2 style="margin-bottom:1rem;">Cadastrar Novo Fornecedor</h2>
             
             <div style="background:#000; padding:15px; border-radius:8px; border:1px dashed var(--primary); margin-bottom:1.5rem;">
