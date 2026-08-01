@@ -1,6 +1,6 @@
 <?php
 /**
- * product.php — Helena Flores (Página do Produto - Estilo Giuliana Flores)
+ * product.php — Helena Flores (Página do Produto - Estilo Giuliana Flores com Preview HD & Zoom)
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/db.php';
@@ -46,9 +46,18 @@ $related = $relStmt->fetchAll();
         }
         .gf-product-gallery {
             background: #FAFAFA; border: 1px solid #EEEEEE; border-radius: 16px; padding: 20px; text-align: center;
+            position: relative; cursor: zoom-in; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.02);
         }
         .gf-product-gallery img {
-            max-width: 100%; height: 420px; object-fit: contain; border-radius: 12px;
+            max-width: 100%; height: 440px; object-fit: contain; border-radius: 12px; transition: transform 0.3s ease;
+        }
+        .gf-product-gallery:hover img {
+            transform: scale(1.04);
+        }
+        .gf-zoom-badge {
+            position: absolute; bottom: 15px; right: 15px; background: rgba(0,0,0,0.65); color: #FFF;
+            padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; pointer-events: none;
+            backdrop-filter: blur(4px); display: flex; align-items: center; gap: 6px;
         }
         .gf-product-buybox {
             background: #FFFFFF; border: 1px solid #EEEEEE; border-radius: 16px; padding: 2.2rem;
@@ -57,9 +66,20 @@ $related = $relStmt->fetchAll();
         .gf-shipping-calculator {
             background: #FFF8F9; border: 1px solid #FCE4EC; border-radius: 12px; padding: 1.2rem; margin: 1.5rem 0;
         }
+        /* Lightbox Modal Style */
+        .gf-lightbox-modal {
+            display: none; position: fixed; z-index: 9999; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); align-items: center; justify-content: center;
+        }
+        .gf-lightbox-modal img {
+            max-width: 90%; max-height: 90vh; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        .gf-lightbox-close {
+            position: absolute; top: 20px; right: 25px; color: #FFF; font-size: 2.5rem; cursor: pointer; font-weight: bold;
+        }
         @media (max-width: 768px) {
             .gf-product-detail-grid { grid-template-columns: 1fr !important; gap: 20px !important; }
-            .gf-product-gallery img { height: 280px !important; }
+            .gf-product-gallery img { height: 300px !important; }
             .gf-product-buybox { padding: 1.2rem !important; }
         }
     </style>
@@ -79,9 +99,12 @@ $related = $relStmt->fetchAll();
 
         <div class="gf-product-detail-grid">
             
-            <!-- Left Column: HD Image Gallery -->
-            <div class="gf-product-gallery">
+            <!-- Left Column: HD Image Gallery with Click Zoom -->
+            <div class="gf-product-gallery" onclick="openLightbox('<?php echo $img; ?>')">
                 <img src="<?php echo $img; ?>" alt="<?php echo htmlspecialchars($product['name']); ?>">
+                <div class="gf-zoom-badge">
+                    🔍 Clique para ampliar (Preview HD)
+                </div>
             </div>
 
             <!-- Right Column: Buy Box -->
@@ -119,64 +142,83 @@ $related = $relStmt->fetchAll();
                     </div>
                 </form>
 
-                <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20pedir%20o%20<?php echo urlencode($product['name']); ?>%20(R$%20<?php echo number_format($product['price'], 2, ',', '.'); ?>)" 
-                   target="_blank" class="gf-btn-whatsapp" style="height:50px; border-radius:25px; justify-content:center; font-size:1.05rem;">
+                <a href="https://wa.me/5511986727872?text=Ol%C3%A1!%20Gostaria%20de%20comprar%20o%20produto%20<?php echo urlencode($product['name']); ?>%20(C%C3%B3d:%20<?php echo $product['id']; ?>)" 
+                   target="_blank" class="gf-btn-whatsapp" style="height:50px; font-size:1.05rem; border-radius:25px; text-decoration:none;">
                     💬 Pedir Imediatamente pelo WhatsApp (11) 98672-7872
                 </a>
 
-                <!-- Shipping Estimator (Lalamove & CEP) -->
+                <!-- Shipping Calculator (Lalamove) -->
                 <div class="gf-shipping-calculator">
-                    <h4 style="color:var(--gf-magenta-dark); margin-bottom:8px; font-size:0.95rem;">
+                    <div style="font-weight:700; color:var(--gf-magenta-dark); font-size:0.95rem; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
                         🚚 Calcular Frete & Entrega Rápida
-                    </h4>
-                    <p style="font-size:0.82rem; color:#666; margin-bottom:10px;">
+                    </div>
+                    <div style="font-size:0.8rem; color:#666; margin-bottom:10px;">
                         Entregamos via Lalamove / Motoboy no mesmo dia em São Paulo e Jardins.
-                    </p>
-                    <form method="POST" action="cart.php" style="display:flex; gap:8px;">
-                        <input type="text" name="calc_cep" placeholder="Digite seu CEP (ex: 01420-001)" 
-                               style="flex:1; height:40px; border-radius:8px; border:1px solid #DDD; padding:0 12px; font-size:0.9rem;">
-                        <button type="submit" class="btn" style="background:var(--gf-magenta); color:#FFF; border-radius:8px; padding:0 18px; font-size:0.85rem; font-weight:bold;">
+                    </div>
+                    <form action="checkout.php" method="POST" style="display:flex; gap:8px;">
+                        <input type="text" name="zipcode" placeholder="Digite seu CEP (ex: 01420-001)" 
+                               style="flex:1; height:42px; border-radius:8px; border:1px solid #DDD; padding:0 12px; font-size:0.9rem;" required>
+                        <button type="submit" class="btn" style="height:42px; background:var(--gf-magenta-dark); color:#FFF; border-radius:8px; padding:0 18px; font-weight:bold; border:none;">
                             OK
                         </button>
                     </form>
                 </div>
+
             </div>
 
         </div>
 
         <!-- Related Products Section -->
         <?php if (!empty($related)): ?>
-            <div class="gf-section-header">
-                <h2 class="gf-section-title">🌸 QUEM VIU ESTE PRODUTO TAMBÉM COMPROU</h2>
-            </div>
-            <div class="gf-product-grid">
-                <?php foreach ($related as $p): ?>
-                    <?php 
-                    $relImg = get_product_image_url($p['image_path'], $p['name']);
-                    ?>
-                    <div class="gf-product-card">
-                        <a href="product.php?id=<?php echo $p['id']; ?>" class="gf-product-img">
-                            <img src="<?php echo $relImg; ?>" alt="<?php echo htmlspecialchars($p['name']); ?>" loading="lazy">
-                        </a>
-                        <div class="gf-product-body">
-                            <a href="product.php?id=<?php echo $p['id']; ?>" class="gf-product-title" style="text-decoration:none;">
-                                <?php echo htmlspecialchars($p['name']); ?>
+            <div style="margin-top:4rem; border-top:2px dashed #EEE; padding-top:3rem;">
+                <h2 class="gf-section-title" style="margin-bottom:1.5rem;">🌸 Produtos Relacionados que Você Vai Amar</h2>
+                <div class="gf-product-grid">
+                    <?php foreach ($related as $r): ?>
+                        <?php 
+                        $rImg = get_product_image_url($r['image_path'], $r['name']);
+                        $rOld = $r['price'] * 1.20;
+                        ?>
+                        <div class="gf-product-card">
+                            <a href="product.php?id=<?php echo $r['id']; ?>" class="gf-product-img">
+                                <img src="<?php echo $rImg; ?>" alt="<?php echo htmlspecialchars($r['name']); ?>" loading="lazy">
                             </a>
-                            <div class="gf-price-container">
-                                <span class="gf-price-val">R$ <?php echo number_format($p['price'], 2, ',', '.'); ?></span>
-                            </div>
-                            <div class="gf-card-actions">
-                                <a href="product.php?id=<?php echo $p['id']; ?>" class="gf-btn-buy" style="text-decoration:none;">
-                                    Ver Detalhes 🌸
+                            <div class="gf-product-body">
+                                <a href="product.php?id=<?php echo $r['id']; ?>" class="gf-product-title" style="text-decoration:none;">
+                                    <?php echo htmlspecialchars($r['name']); ?>
                                 </a>
+                                <div class="gf-price-container" style="margin-top:10px;">
+                                    <span class="gf-old-price">R$ <?php echo number_format($rOld, 2, ',', '.'); ?></span>
+                                    <span class="gf-price-val">R$ <?php echo number_format($r['price'], 2, ',', '.'); ?></span>
+                                </div>
+                                <div class="gf-card-actions" style="margin-top:10px;">
+                                    <a href="product.php?id=<?php echo $r['id']; ?>" class="gf-btn-buy" style="height:38px; font-size:0.9rem; border-radius:20px; text-decoration:none;">
+                                        Ver Produto
+                                    </a>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                <?php endforeach; ?>
+                    <?php endforeach; ?>
+                </div>
             </div>
         <?php endif; ?>
 
     </div>
+
+    <!-- Lightbox Modal -->
+    <div id="lightboxModal" class="gf-lightbox-modal" onclick="closeLightbox()">
+        <span class="gf-lightbox-close">&times;</span>
+        <img id="lightboxImg" src="" alt="Ampliação HD">
+    </div>
+
+    <script>
+        function openLightbox(src) {
+            document.getElementById('lightboxImg').src = src;
+            document.getElementById('lightboxModal').style.display = 'flex';
+        }
+        function closeLightbox() {
+            document.getElementById('lightboxModal').style.display = 'none';
+        }
+    </script>
 
     <?php include __DIR__ . '/includes/footer_public.php'; ?>
 
