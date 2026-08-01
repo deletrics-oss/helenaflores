@@ -1,6 +1,6 @@
 <?php
 /**
- * register.php — Helena Flores (Cadastro de Cliente Completo)
+ * register.php — Helena Flores (Cadastro de Cliente Completo com Resolução de Telefone Duplicado)
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/db.php';
@@ -24,7 +24,7 @@ try {
         'is_lead'      => "TINYINT(1) DEFAULT 0"
     ];
     foreach ($cols as $c => $def) {
-        try { $pdo->exec("ALTER TABLE users ADD COLUMN $c $def"); } catch (Exception $e) {}
+        try { $pdo->exec("ALTER TABLE users ADD COLUMN $c $def"); } catch(Exception $e) {}
     }
 } catch (Exception $e) {}
 
@@ -43,19 +43,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $city = trim($_POST['city'] ?? 'São Paulo');
     $state = trim($_POST['state'] ?? 'SP');
 
-    if (empty($name) || empty($email) || empty($phone) || empty($password)) {
+    if (empty($name) || empty($phone) || empty($password)) {
         $error = 'Por favor, preencha todos os campos obrigatórios (*).';
     } else {
         $cleanPhone = preg_replace('/\D/', '', $phone);
+        if (empty($email)) {
+            $email = $cleanPhone . '@helenaflores.com.br';
+        }
 
-        // Check if email already exists
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? AND is_lead = 0");
-        $stmt->execute([$email]);
-        if ($stmt->fetch()) {
-            $error = 'Este e-mail já está cadastrado. Por favor, faça login ou use outro e-mail.';
+        $hashPass = password_hash($password, PASSWORD_DEFAULT);
+
+        // Check if user already exists by phone OR email
+        $stmtEx = $pdo->prepare("SELECT id, name, email FROM users WHERE phone = ? OR phone = ? OR email = ?");
+        $stmtEx->execute([$phone, $cleanPhone, $email]);
+        $existing = $stmtEx->fetch(PDO::FETCH_ASSOC);
+
+        if ($existing) {
+            // UPDATE existing user details and log them in
+            try {
+                $sqlUp = "UPDATE users SET name = ?, email = ?, password = ?, document = ?, zipcode = ?, address = ?, number = ?, neighborhood = ?, city = ?, state = ?, is_lead = 0 WHERE id = ?";
+                $stmtUp = $pdo->prepare($sqlUp);
+                $stmtUp->execute([$name, $email, $hashPass, $doc, $zip, $address, $number, $neighborhood, $city, $state, $existing['id']]);
+
+                $_SESSION['user_id'] = $existing['id'];
+                $_SESSION['user_name'] = $name;
+                $_SESSION['user_email'] = $email;
+                $_SESSION['user_role'] = 'customer';
+
+                header("Location: " . $baseUrl . "/" . ltrim($redirect, '/'));
+                exit;
+            } catch (Exception $eUp) {
+                // If email collision occurs on update, update without changing email
+                $sqlUp2 = "UPDATE users SET name = ?, password = ?, document = ?, zipcode = ?, address = ?, number = ?, neighborhood = ?, city = ?, state = ?, is_lead = 0 WHERE id = ?";
+                $stmtUp2 = $pdo->prepare($sqlUp2);
+                $stmtUp2->execute([$name, $hashPass, $doc, $zip, $address, $number, $neighborhood, $city, $state, $existing['id']]);
+
+                $_SESSION['user_id'] = $existing['id'];
+                $_SESSION['user_name'] = $name;
+                $_SESSION['user_email'] = $existing['email'];
+                $_SESSION['user_role'] = 'customer';
+
+                header("Location: " . $baseUrl . "/" . ltrim($redirect, '/'));
+                exit;
+            }
         } else {
-            $hashPass = password_hash($password, PASSWORD_DEFAULT);
-
+            // NEW Customer
             try {
                 $sql = "INSERT INTO users (name, email, password, phone, document, zipcode, address, number, neighborhood, city, state, role, source, is_lead) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'customer', 'Site Direct', 0)";
@@ -63,7 +95,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmtIns->execute([$name, $email, $hashPass, $cleanPhone, $doc, $zip, $address, $number, $neighborhood, $city, $state]);
                 $newId = $pdo->lastInsertId();
 
-                // Set Session Logged In
                 $_SESSION['user_id'] = $newId;
                 $_SESSION['user_name'] = $name;
                 $_SESSION['user_email'] = $email;
@@ -72,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header("Location: " . $baseUrl . "/" . ltrim($redirect, '/'));
                 exit;
             } catch (Exception $e) {
-                // Fallback insert with essential columns if schema differs
+                // Safe Fallback Insert
                 try {
                     $stmtIns = $pdo->prepare("INSERT INTO users (name, email, password, phone, role) VALUES (?, ?, ?, ?, 'customer')");
                     $stmtIns->execute([$name, $email, $hashPass, $cleanPhone]);
@@ -178,23 +209,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="form-grid">
                     <div class="form-group">
-                        <label>CEP</label>
-                        <input type="text" name="zipcode" class="form-control" placeholder="01420-001">
+                        <label>CEP (Busca Automática)</label>
+                        <input type="text" name="zipcode" id="zipcode" class="form-control" placeholder="01420-001" onblur="fetchViaCEP(this.value)">
+                        <small id="cepStatus" style="color:var(--gf-magenta); font-weight:bold; font-size:0.78rem; margin-top:3px; display:block;"></small>
                     </div>
                     <div class="form-group">
                         <label>Cidade / Estado</label>
-                        <input type="text" name="city" class="form-control" value="São Paulo / SP">
+                        <input type="text" name="city" id="city" class="form-control" value="São Paulo / SP">
                     </div>
                 </div>
 
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Endereço / Rua</label>
-                        <input type="text" name="address" class="form-control" placeholder="Ex: Alameda Jaú">
+                        <input type="text" name="address" id="address" class="form-control" placeholder="Ex: Alameda Jaú">
                     </div>
                     <div class="form-group">
                         <label>Número & Bairro</label>
-                        <input type="text" name="number" class="form-control" placeholder="1777 - Jardins">
+                        <input type="text" name="number" id="number" class="form-control" placeholder="1777 - Jardins">
                     </div>
                 </div>
 
@@ -213,6 +245,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
 
     </div>
+
+    <script>
+        function fetchViaCEP(cepRaw) {
+            const cep = cepRaw.replace(/\D/g, '');
+            const statusEl = document.getElementById('cepStatus');
+            if (cep.length === 8) {
+                statusEl.innerText = '🔍 Buscando endereço...';
+                fetch(`https://viacep.com.br/ws/${cep}/json/`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (!data.erro) {
+                            document.getElementById('address').value = data.logradouro || '';
+                            document.getElementById('city').value = (data.localidade || 'São Paulo') + ' / ' + (data.uf || 'SP');
+                            statusEl.innerText = '✅ Endereço localizado automaticamente!';
+                        }
+                    });
+            }
+        }
+    </script>
 
     <?php include __DIR__ . '/includes/footer_public.php'; ?>
 
